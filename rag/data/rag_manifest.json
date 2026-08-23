@@ -1,0 +1,31 @@
+{
+  "total_documents": 5390,
+  "collections": {
+    "housing": 80,
+    "financial_dialogue": 5000,
+    "youth_survey": 310
+  },
+  "review_status": {
+    "needs_review": 80,
+    "approved": 5310
+  },
+  "unique_ids": 5390,
+  "outputs": {
+    "housing_rag_cleaned.jsonl": {
+      "rows": 80,
+      "sha256": "7d18d6668cdc61159b9a101e65a04b2c9cbc931bc94b5a7301324f0f874c7228"
+    },
+    "financial_dialogue_rag_cleaned.jsonl": {
+      "rows": 5000,
+      "sha256": "dbd9e055313c6d3cf4cc734d2502c917b8e1633a8b83836d28c42a3c68317609"
+    },
+    "youth_rag_cleaned.jsonl": {
+      "rows": 310,
+      "sha256": "da60682a77748b71788116ad4682ced3fc8ed0af85df67233d205c8083e41a1c"
+    },
+    "rag_documents_final.jsonl": {
+      "rows": 5390,
+      "sha256": "784e1dff8519084302c5d4c2a3faf62979b87428e68202b44bf450aad7887c32"
+    }
+  }
+}

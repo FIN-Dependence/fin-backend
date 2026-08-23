@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+findependence:
+  cors:
+    allowed-origins: http://localhost:3000
+  llm:
+    enabled: false
+    base-url: http://localhost:1234/v1
+    api-key: ""
+    model: test-model
+    temperature: 0.2
+  rag:
+    enabled: false
+    data-path: ""
+    max-results: 4
