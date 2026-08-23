@@ -36,4 +36,3 @@ LM Studio에서 OpenAI 호환 API 서버를 `http://localhost:1234`로 실행합
 ## RAG
 
 Chroma DB 생성 및 Colab 실행 방법은 `rag/README.md`와 `rag/COLAB_실행순서.md`에 정리되어 있습니다. 생성되는 `rag/chroma_db`는 저장소에 커밋하지 않습니다.
-
