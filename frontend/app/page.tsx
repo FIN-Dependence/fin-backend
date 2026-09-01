@@ -1,5 +1,5 @@
-import { FinDependenceApp } from "./FinDependenceApp";
+import { AuthGate } from "./AuthGate";
 
 export default function Home() {
-  return <FinDependenceApp />;
+  return <AuthGate />;
 }

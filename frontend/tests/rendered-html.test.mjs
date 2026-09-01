@@ -23,7 +23,7 @@ async function render() {
   );
 }
 
-test("server-renders the FINDEPENDENCE application", async () => {
+test("server-renders login without exposing the private application", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -31,9 +31,10 @@ test("server-renders the FINDEPENDENCE application", async () => {
   const html = await response.text();
   assert.match(html, /<html lang="ko">/i);
   assert.match(html, /<title>FINDEPENDENCE \| 첫 독립 금융 AI<\/title>/i);
-  assert.match(html, /나의 독립 준비 상담/);
-  assert.match(html, /금융환경 설문/);
-  assert.match(html, /FINDEPENDENCE AI/);
+  assert.match(html, /다시 만나 반가워요/);
+  assert.match(html, /로그인하고 시작하기/);
+  assert.match(html, /회원가입/);
+  assert.doesNotMatch(html, /class="app-shell"/);
 });
 
 test("keeps the Java API integration in the client application", async () => {
@@ -48,4 +49,8 @@ test("keeps the Java API integration in the client application", async () => {
   assert.match(api, /NEXT_PUBLIC_API_BASE_URL/);
   assert.match(api, /\/api\/profiles\//);
   assert.match(api, /\/api\/chat/);
+  assert.match(api, /credentials: "include"/);
+  assert.doesNotMatch(api, /localStorage\.(getItem|setItem)/);
+  assert.doesNotMatch(app, /localStorage\.(getItem|setItem)/);
+  assert.doesNotMatch(api, /JSON.stringify\(\{ clientId/);
 });

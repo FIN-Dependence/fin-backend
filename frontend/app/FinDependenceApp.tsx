@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { getClientId, loadRemoteProfile, saveRemoteProfile, sendChat } from "./api";
+import { AuthUser, loadHistory, loadRemoteProfile, saveRemoteProfile, sendChat } from "./api";
 
 type Profile = {
   name: string;
@@ -13,10 +13,17 @@ type Profile = {
   monthlyRent: string;
   maintenance: string;
   utilities: string;
+  monthlyUtilities: string;
+  monthlyFood: string;
+  monthlyTransport: string;
+  monthlyCommunication: string;
   insurance: string;
   debtPayment: string;
   cardPayment: string;
+  otherFixedCost: string;
   emergencyFund: string;
+  movingCost: string;
+  furnishingCost: string;
   familySupport: string;
   familySupportEnds: boolean;
   moveDate: string;
@@ -36,8 +43,6 @@ type Message = {
   advice?: Advice[];
 };
 
-const STORAGE_KEY = "findependence-profile-v1";
-
 const emptyProfile: Profile = {
   name: "",
   age: "",
@@ -48,10 +53,17 @@ const emptyProfile: Profile = {
   monthlyRent: "",
   maintenance: "",
   utilities: "확인하지 못함",
+  monthlyUtilities: "",
+  monthlyFood: "",
+  monthlyTransport: "",
+  monthlyCommunication: "",
   insurance: "",
   debtPayment: "",
   cardPayment: "",
+  otherFixedCost: "",
   emergencyFund: "",
+  movingCost: "",
+  furnishingCost: "",
   familySupport: "",
   familySupportEnds: false,
   moveDate: "",
@@ -65,13 +77,15 @@ const initialMessages: Message[] = [
   },
 ];
 
-const money = (value: string) => Number(value.replace(/[^0-9]/g, "")) || 0;
-const formatWon = (value: number) => `${Math.max(0, Math.round(value / 10000)).toLocaleString("ko-KR")}만원`;
+const money = (value: string) => Number(value) || 0;
+const formatWon = (value: number) => `${Math.round(value / 10000).toLocaleString("ko-KR")}만원`;
 
 function getSummary(profile: Profile) {
   const income = money(profile.monthlyIncome) + (profile.familySupportEnds ? 0 : money(profile.familySupport));
-  const housing = money(profile.monthlyRent) + money(profile.maintenance);
-  const required = housing + money(profile.insurance) + money(profile.debtPayment) + money(profile.cardPayment);
+  const housing = money(profile.monthlyRent) + money(profile.maintenance) + money(profile.monthlyUtilities);
+  const required = housing + money(profile.monthlyFood) + money(profile.monthlyTransport)
+    + money(profile.monthlyCommunication) + money(profile.insurance) + money(profile.debtPayment)
+    + money(profile.cardPayment) + money(profile.otherFixedCost);
   const balance = income - required;
   const emergencyMonths = required > 0 ? money(profile.emergencyFund) / required : 0;
   return { income, housing, required, balance, emergencyMonths };
@@ -87,6 +101,14 @@ function buildAdvice(profile: Profile): Advice[] {
       title: "관리비에 포함된 공과금을 확인하세요",
       description: "수도·난방·전기·가스가 별도라면 실제 주거비가 지금 계산보다 커질 수 있어요.",
       action: "임대차 조건 또는 관리비 고지서에서 포함 항목 확인",
+    });
+  }
+  if (!profile.monthlyFood || !profile.monthlyTransport || !profile.monthlyCommunication) {
+    result.push({
+      status: "확인 필요",
+      title: "독립 후 기본 생활비를 채워 주세요",
+      description: "식비·교통비·통신비는 월세 외에 매달 반복되는 비용이라 실제 잔액 계산에 필요해요.",
+      action: "최근 지출을 참고해 생활비 항목 입력",
     });
   }
   if (!profile.insurance) {
@@ -124,30 +146,26 @@ function buildAdvice(profile: Profile): Advice[] {
   return result.slice(0, 3);
 }
 
-function buildReply(profile: Profile, question: string) {
-  const { income, housing, required, balance, emergencyMonths } = getSummary(profile);
-  const person = profile.name ? `${profile.name}님의 저장된 금융환경` : "저장된 금융환경";
-
-  if (/가능|괜찮|살 수|독립/.test(question)) {
-    return `${person}을 기준으로 보면 확인된 월 유입은 ${formatWon(income)}, 확인된 필수지출은 ${formatWon(required)}이고 남는 금액은 약 ${formatWon(balance)}이에요. 다만 식비·교통비·통신비와 별도 공과금이 아직 포함되지 않았을 수 있으므로, 이 금액을 최종 여유자금으로 보기는 어려워요.`;
-  }
-  if (/비상|저축|여유/.test(question)) {
-    return `현재 비상자금은 확인된 필수지출의 약 ${emergencyMonths.toFixed(1)}개월분이에요. 독립 첫 달에는 이사비와 생활용품 같은 일회성 비용도 발생하므로, 그 비용을 제외한 비상자금을 따로 확인하는 것이 좋아요.`;
-  }
-  if (/주거|월세|관리비|공과금/.test(question)) {
-    return `현재 확인된 월 주거비는 월세와 관리비를 합쳐 ${formatWon(housing)}이에요. 관리비에 수도·난방이 포함되는지, 전기·가스·인터넷은 별도인지 확인하면 실제 월 주거비를 더 정확하게 계산할 수 있어요.`;
-  }
-  if (/뭐|무엇|확인|준비|빠진/.test(question)) {
-    return `${person}에서 우선 확인할 것은 관리비 포함 항목, 독립 후 직접 납부할 보험료, 그리고 이사 초기비용이에요. 확인되지 않은 금액은 0원으로 단정하지 않고 추가 질문으로 남겨둘게요.`;
-  }
-  return `${person}을 반영해 답변할게요. 현재 계산된 월 필수지출은 ${formatWon(required)}입니다. 질문과 관련된 금액이 설문에 없다면 임의로 추정하지 않고, 필요한 정보를 먼저 확인하겠습니다.`;
-}
-
 function Icon({ children }: { children: React.ReactNode }) {
   return <span className="icon" aria-hidden="true">{children}</span>;
 }
 
-export function FinDependenceApp() {
+function MoneyInput({ label, value, onChange, placeholder, required = false }: {
+  label: string; value: string; onChange: (won: string) => void; placeholder: string; required?: boolean;
+}) {
+  const manwon = value === "" ? "" : String(Number(value) / 10000);
+  return <label>{label}<span className="money-input">
+    <input type="number" min={0} max={100000000} step={0.1} value={manwon}
+      onChange={(event) => {
+        if (event.target.value === "") return onChange("");
+        const amount = Number(event.target.value);
+        if (Number.isFinite(amount) && amount >= 0) onChange(String(Math.round(amount * 10000)));
+      }} placeholder={placeholder} required={required} />
+    <em>만원</em>
+  </span></label>;
+}
+
+export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout: () => Promise<void> }) {
   const [view, setView] = useState<"chat" | "survey">("chat");
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [draft, setDraft] = useState<Profile>(emptyProfile);
@@ -155,42 +173,47 @@ export function FinDependenceApp() {
   const [savedAt, setSavedAt] = useState("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [clientId, setClientId] = useState("");
   const [waiting, setWaiting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const id = getClientId();
-    setClientId(id);
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const data = JSON.parse(raw) as { profile: Profile; savedAt: string };
-        const loaded = { ...emptyProfile, ...data.profile };
-        setProfile(loaded);
-        setDraft(loaded);
-        setSaved(true);
-        setSavedAt(data.savedAt || "이전에 저장됨");
-      } catch {
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
-    }
-    loadRemoteProfile(id).then((remote) => {
-      if (!remote) return;
-      const loaded = { ...emptyProfile, ...remote.profile };
+    let active = true;
+    // Anonymous browser data has no verified account owner; never import it automatically.
+    Promise.all([loadRemoteProfile(), loadHistory()]).then(([remote, history]) => {
+      if (!active) return;
+      const loaded = remote ? { ...emptyProfile, ...remote.profile } : { ...emptyProfile, name: user.displayName };
       setProfile(loaded);
       setDraft(loaded);
-      setSaved(true);
-      setSavedAt(remote.savedAt);
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile: loaded, savedAt: remote.savedAt }));
-    }).catch(() => undefined);
-  }, []);
+      setSaved(!!remote);
+      setSavedAt(remote?.savedAt || "");
+      if (!remote) setView("survey");
+      setMessages(history.length ? history.map((m, i) => ({ id: i + 1, role: m.role, text: m.text })) : initialMessages);
+    }).catch((failure: unknown) => {
+      if (active) { setLoadFailed(true); setError(failure instanceof Error ? failure.message : "정보를 불러오지 못했습니다."); }
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [user.id, user.displayName, retry]);
 
   useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
 
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) setProfileMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
   const summary = useMemo(() => getSummary(profile), [profile]);
   const completion = useMemo(() => {
-    const keys: (keyof Profile)[] = ["age", "employment", "monthlyIncome", "housingType", "monthlyRent", "maintenance", "utilities", "insurance", "debtPayment", "emergencyFund"];
+    const keys: (keyof Profile)[] = ["age", "employment", "monthlyIncome", "housingType", "monthlyRent", "maintenance", "utilities",
+      "monthlyUtilities", "monthlyFood", "monthlyTransport", "monthlyCommunication", "insurance", "debtPayment", "emergencyFund"];
     return Math.round((keys.filter((key) => profile[key] !== "").length / keys.length) * 100);
   }, [profile]);
 
@@ -205,54 +228,46 @@ export function FinDependenceApp() {
 
   async function saveSurvey(event: FormEvent) {
     event.preventDefault();
-    if (waiting) return;
-    setWaiting(true);
-    const now = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date());
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile: draft, savedAt: now }));
-    let stored = draft;
-    let storedAt = now;
-    let serverConnected = false;
-    try {
-      const remote = await saveRemoteProfile(clientId || getClientId(), draft);
-      stored = { ...emptyProfile, ...remote.profile };
-      storedAt = remote.savedAt;
-      serverConnected = true;
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile: stored, savedAt: storedAt }));
-    } catch {
-      // 로컬 미리보기와 백엔드 일시 중단 상황에서도 입력은 잃지 않는다.
+    if (waiting || loading || loadFailed) return;
+    const amounts = [draft.monthlyIncome, draft.deposit, draft.monthlyRent, draft.maintenance, draft.monthlyUtilities,
+      draft.monthlyFood, draft.monthlyTransport, draft.monthlyCommunication, draft.insurance, draft.debtPayment,
+      draft.cardPayment, draft.otherFixedCost, draft.emergencyFund, draft.movingCost, draft.furnishingCost, draft.familySupport];
+    if (amounts.some(value => value !== "" && (!Number.isSafeInteger(Number(value)) || Number(value) < 0 || Number(value) > 1000000000000))) {
+      setError("금액은 0원 이상 1조원 이하의 정수로 입력해 주세요. 모르는 금액은 비워두세요.");
+      return;
     }
-    setProfile(stored);
-    setSaved(true);
-    setSavedAt(storedAt);
-    setView("chat");
-    setMessages((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        role: "assistant",
-        text: `${stored.name || "사용자"}님의 금융환경을 ${serverConnected ? "서버에" : "이 기기에"} 저장했어요. 상황이 바뀌면 언제든 수정할 수 있어요. 먼저 확인할 항목을 정리했습니다.`,
+    setWaiting(true); setError("");
+    try {
+      const remote = await saveRemoteProfile(draft);
+      const stored = { ...emptyProfile, ...remote.profile };
+      setProfile(stored); setDraft(stored); setSaved(true); setSavedAt(remote.savedAt); setView("chat");
+      setMessages(current => [...current, {
+        id: Date.now(), role: "assistant",
+        text: `${stored.name || user.displayName}님의 금융환경을 계정에 저장했어요. 상황이 바뀌면 언제든 수정할 수 있어요. 먼저 확인할 항목을 정리했습니다.`,
         advice: buildAdvice(stored),
-      },
-    ]);
-    setWaiting(false);
+      }]);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "저장하지 못했습니다. 입력 내용을 확인해 주세요."); }
+    finally { setWaiting(false); }
   }
 
   async function submitMessage(event: FormEvent) {
     event.preventDefault();
     const question = input.trim();
-    if (!question || waiting) return;
+    if (!question || waiting || loading || loadFailed) return;
+    setError("");
     setMessages((current) => [...current, { id: Date.now(), role: "user", text: question }]);
     setInput("");
     setWaiting(true);
-    let reply = saved ? buildReply(profile, question) : "정확한 답변을 위해 먼저 금융환경 설문을 저장해 주세요. 모르는 항목은 비워두어도 괜찮아요.";
-    let advice = saved ? buildAdvice(profile) : undefined;
+    let reply = "정확한 답변을 위해 먼저 금융환경 설문을 저장해 주세요. 모르는 항목은 비워두어도 괜찮아요.";
+    let advice: Advice[] | undefined;
     if (saved) {
       try {
-        const response = await sendChat(clientId || getClientId(), question);
+        const response = await sendChat(question);
         reply = response.answer;
         advice = response.advice;
-      } catch {
-        // 서버 연결 실패 시 화면의 계산 결과로 안전하게 답변한다.
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : "상담에 연결하지 못했습니다.");
+        setInput(question); setWaiting(false); return;
       }
     }
     setMessages((current) => [...current, {
@@ -288,10 +303,22 @@ export function FinDependenceApp() {
           <button onClick={() => { setInput("비상자금은 얼마나 필요해?"); setView("chat"); }}>비상자금 점검</button>
         </div>
 
-        <div className="profile-mini">
+        <div className="profile-area" ref={profileMenuRef}>
+        {profileMenuOpen && <div className="profile-menu" role="menu">
+          <div><strong>{user.displayName}</strong><small>{user.email}</small></div>
+          <button role="menuitem" onClick={() => { setProfileMenuOpen(false); openSurvey(); }}><span>⚙</span> 금융환경 설정</button>
+          <button role="menuitem" className="logout-item" disabled={waiting} onClick={async () => {
+            setWaiting(true); setProfileMenuOpen(false);
+            try { await onLogout(); } catch (failure) { setError(failure instanceof Error ? failure.message : "로그아웃하지 못했습니다."); }
+            finally { setWaiting(false); }
+          }}><span>↪</span> 로그아웃</button>
+        </div>}
+        <button className="profile-mini" type="button" aria-haspopup="menu" aria-expanded={profileMenuOpen}
+          onClick={() => setProfileMenuOpen(open => !open)}>
           <div className="avatar">{profile.name?.[0] || "나"}</div>
-          <div><strong>{profile.name || "나의 금융환경"}</strong><small>{saved ? `${completion}% 입력 · ${savedAt}` : "설문을 작성해 주세요"}</small></div>
-          <button onClick={openSurvey} aria-label="금융환경 수정">•••</button>
+          <div><strong>{user.displayName}</strong><small title={user.email}>{user.email}</small></div>
+          <span aria-hidden="true">•••</span>
+        </button>
         </div>
       </aside>
 
@@ -301,10 +328,12 @@ export function FinDependenceApp() {
             <span className="mobile-brand">FINDEPENDENCE</span>
             <h1>{view === "chat" ? "나의 독립 준비 상담" : saved ? "금융환경 업데이트" : "첫 독립 금융환경 설문"}</h1>
           </div>
-          <div className={`status-pill ${saved ? "ready" : ""}`}><span /> {saved ? "내 정보 연결됨" : "설문 대기 중"}</div>
+          <div className="account-actions"><div className={`status-pill ${saved ? "ready" : ""}`}><span /> {saved ? "내 정보 연결됨" : "설문 대기 중"}</div></div>
         </header>
 
-        {view === "chat" ? (
+        <div className="workspace-body">
+        {error && <div className="app-error" role="alert">{error}{loadFailed && <button onClick={() => { setLoading(true); setLoadFailed(false); setError(""); setRetry(v => v + 1); }}>다시 불러오기</button>}</div>}
+        {loading ? <div className="account-loading" role="status">내 계정의 금융환경을 불러오고 있어요…</div> : loadFailed ? <div className="account-loading">기존 정보를 덮어쓰지 않도록 입력을 잠시 멈췄어요. 다시 불러오기를 눌러 주세요.</div> : view === "chat" ? (
           <div className="chat-page">
             <section className="chat-column">
               <div className="chat-scroll">
@@ -358,6 +387,7 @@ export function FinDependenceApp() {
                     onChange={(event) => setInput(event.target.value)}
                     placeholder={saved ? "저장된 내 상황을 바탕으로 질문해 보세요" : "설문을 작성하거나 독립 준비를 질문해 보세요"}
                     rows={1}
+                    maxLength={1500}
                     aria-label="상담 질문"
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
@@ -395,7 +425,7 @@ export function FinDependenceApp() {
                     <div><span className={`dot ${profile.insurance ? "good" : "warn"}`} />보험<strong>{profile.insurance ? "확인" : "확인 필요"}</strong></div>
                     <div><span className={`dot ${profile.emergencyFund ? "good" : "warn"}`} />비상자금<strong>{profile.emergencyFund ? "입력됨" : "미입력"}</strong></div>
                   </div>
-                  <div className="saved-note">마지막 저장 <strong>{savedAt}</strong><span>이 정보는 이 기기에 안전하게 저장됩니다.</span></div>
+                  <div className="saved-note">마지막 저장 <strong>{savedAt}</strong><span>로그인한 계정에 저장된 금융환경입니다.</span></div>
                 </>
               ) : (
                 <div className="empty-context"><span>＋</span><h3>아직 연결된 정보가 없어요</h3><p>설문을 저장하면 상담할 때마다 다시 설명하지 않아도 돼요.</p><button onClick={openSurvey}>설문 시작하기</button></div>
@@ -413,12 +443,12 @@ export function FinDependenceApp() {
               <section className="form-section">
                 <div className="section-title"><span>01</span><div><h3>나의 현재 상황</h3><p>독립 시점의 소득과 생활 상태를 확인해요.</p></div></div>
                 <div className="field-grid three">
-                  <label>이름 또는 별명<input value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="예: 지윤" /></label>
-                  <label>나이<input type="number" value={draft.age} onChange={(e) => update("age", e.target.value)} placeholder="예: 26" required /></label>
+                  <label>이름 또는 별명<input maxLength={40} value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="예: 홍길동" /></label>
+                  <label>나이 (19~39세)<input type="number" min={19} max={39} step={1} value={draft.age} onChange={(e) => update("age", e.target.value)} placeholder="예: 26" required /></label>
                   <label>취업 상태<select value={draft.employment} onChange={(e) => update("employment", e.target.value)}><option>첫 취업 · 정규직</option><option>계약직</option><option>프리랜서</option><option>구직 중</option><option>대학생 · 대학원생</option></select></label>
-                  <label>월 실수령 소득<span className="money-input"><input type="number" value={draft.monthlyIncome} onChange={(e) => update("monthlyIncome", e.target.value)} placeholder="2450000" required /><em>원</em></span></label>
+                  <MoneyInput label="월 실수령 소득" value={draft.monthlyIncome} onChange={(value) => update("monthlyIncome", value)} placeholder="예: 245" required />
                   <label>독립 예정일<input type="date" value={draft.moveDate} onChange={(e) => update("moveDate", e.target.value)} /></label>
-                  <label>월 가족 지원금<span className="money-input"><input type="number" value={draft.familySupport} onChange={(e) => update("familySupport", e.target.value)} placeholder="없으면 0" /><em>원</em></span></label>
+                  <MoneyInput label="월 가족 지원금" value={draft.familySupport} onChange={(value) => update("familySupport", value)} placeholder="없으면 0" />
                 </div>
                 <label className="check-line"><input type="checkbox" checked={draft.familySupportEnds} onChange={(e) => update("familySupportEnds", e.target.checked)} /><span>현재 가족 지원은 독립과 함께 종료돼요</span></label>
               </section>
@@ -427,20 +457,34 @@ export function FinDependenceApp() {
                 <div className="section-title"><span>02</span><div><h3>예정된 주거비</h3><p>계약 조건과 매달 직접 부담할 비용을 입력해요.</p></div></div>
                 <div className="field-grid three">
                   <label>주거 형태<select value={draft.housingType} onChange={(e) => update("housingType", e.target.value)}><option>월세</option><option>전세</option><option>공공임대</option><option>기숙사</option><option>아직 미정</option></select></label>
-                  <label>보증금<span className="money-input"><input type="number" value={draft.deposit} onChange={(e) => update("deposit", e.target.value)} placeholder="10000000" /><em>원</em></span></label>
-                  <label>월세<span className="money-input"><input type="number" value={draft.monthlyRent} onChange={(e) => update("monthlyRent", e.target.value)} placeholder="650000" /><em>원</em></span></label>
-                  <label>월 관리비<span className="money-input"><input type="number" value={draft.maintenance} onChange={(e) => update("maintenance", e.target.value)} placeholder="80000" /><em>원</em></span></label>
+                  <MoneyInput label="보증금" value={draft.deposit} onChange={(value) => update("deposit", value)} placeholder="예: 1,000" />
+                  <MoneyInput label="월세" value={draft.monthlyRent} onChange={(value) => update("monthlyRent", value)} placeholder="예: 65" />
+                  <MoneyInput label="월 관리비" value={draft.maintenance} onChange={(value) => update("maintenance", value)} placeholder="예: 8" />
                   <label>관리비 포함 항목<select value={draft.utilities} onChange={(e) => update("utilities", e.target.value)}><option>확인하지 못함</option><option>일부만 확인</option><option>확인 완료</option></select></label>
+                  <MoneyInput label="관리비 외 월 공과금" value={draft.monthlyUtilities} onChange={(value) => update("monthlyUtilities", value)} placeholder="전기·가스·수도" />
                 </div>
               </section>
 
               <section className="form-section">
-                <div className="section-title"><span>03</span><div><h3>매달 나가는 금융비용</h3><p>독립 후에도 계속 부담할 결제와 부채를 확인해요.</p></div></div>
+                <div className="section-title"><span>03</span><div><h3>독립 후 기본 생활비</h3><p>공식 생활비 자료의 항목에 맞춰 매달 반복되는 비용을 확인해요.</p></div></div>
                 <div className="field-grid three">
-                  <label>월 보험료<span className="money-input"><input type="number" value={draft.insurance} onChange={(e) => update("insurance", e.target.value)} placeholder="모르면 비워두기" /><em>원</em></span></label>
-                  <label>월 대출 상환액<span className="money-input"><input type="number" value={draft.debtPayment} onChange={(e) => update("debtPayment", e.target.value)} placeholder="학자금 포함" /><em>원</em></span></label>
-                  <label>월 카드 결제 예정액<span className="money-input"><input type="number" value={draft.cardPayment} onChange={(e) => update("cardPayment", e.target.value)} placeholder="최근 평균" /><em>원</em></span></label>
-                  <label>현재 비상자금<span className="money-input"><input type="number" value={draft.emergencyFund} onChange={(e) => update("emergencyFund", e.target.value)} placeholder="700000" /><em>원</em></span></label>
+                  <MoneyInput label="월 식비" value={draft.monthlyFood} onChange={(value) => update("monthlyFood", value)} placeholder="장보기·외식" />
+                  <MoneyInput label="월 교통비" value={draft.monthlyTransport} onChange={(value) => update("monthlyTransport", value)} placeholder="대중교통 등" />
+                  <MoneyInput label="월 통신비" value={draft.monthlyCommunication} onChange={(value) => update("monthlyCommunication", value)} placeholder="휴대폰·인터넷" />
+                  <MoneyInput label="월 보험료" value={draft.insurance} onChange={(value) => update("insurance", value)} placeholder="모르면 비워두기" />
+                  <MoneyInput label="월 대출 상환액" value={draft.debtPayment} onChange={(value) => update("debtPayment", value)} placeholder="학자금 포함" />
+                  <MoneyInput label="미분류 카드·자동이체" value={draft.cardPayment} onChange={(value) => update("cardPayment", value)} placeholder="위 항목 제외" />
+                  <MoneyInput label="기타 월 고정비" value={draft.otherFixedCost} onChange={(value) => update("otherFixedCost", value)} placeholder="구독·회비 등" />
+                </div>
+                <p className="field-help">같은 지출을 생활비와 카드 결제액에 중복 입력하지 마세요. 카드 항목에는 위에서 분류하지 못한 금액만 적어 주세요.</p>
+              </section>
+
+              <section className="form-section">
+                <div className="section-title"><span>04</span><div><h3>초기비용과 비상자금</h3><p>입주할 때 한 번 드는 돈과 생활을 지킬 자금을 분리해 확인해요.</p></div></div>
+                <div className="field-grid three">
+                  <MoneyInput label="예상 이사비" value={draft.movingCost} onChange={(value) => update("movingCost", value)} placeholder="운송·중개 등" />
+                  <MoneyInput label="가구·가전 구입비" value={draft.furnishingCost} onChange={(value) => update("furnishingCost", value)} placeholder="입주 초기 구매" />
+                  <MoneyInput label="현재 비상자금" value={draft.emergencyFund} onChange={(value) => update("emergencyFund", value)} placeholder="예: 70" />
                 </div>
               </section>
 
@@ -453,6 +497,7 @@ export function FinDependenceApp() {
             </form>
           </div>
         )}
+        </div>
       </section>
     </main>
   );

@@ -10,8 +10,10 @@ import java.util.List;
 public class DiagnosisService {
     public DiagnosisResponse diagnose(ProfileEntity p) {
         long inflow = value(p.getMonthlyIncome()) + (p.isFamilySupportEnds() ? 0 : value(p.getFamilySupport()));
-        long required = value(p.getMonthlyRent()) + value(p.getMaintenance()) + value(p.getInsurance())
-                + value(p.getDebtPayment()) + value(p.getCardPayment());
+        long required = value(p.getMonthlyRent()) + value(p.getMaintenance()) + value(p.getMonthlyUtilities())
+                + value(p.getMonthlyFood()) + value(p.getMonthlyTransport()) + value(p.getMonthlyCommunication())
+                + value(p.getInsurance()) + value(p.getDebtPayment()) + value(p.getCardPayment())
+                + value(p.getOtherFixedCost());
         long balance = inflow - required;
         double emergencyMonths = required == 0 ? 0 : (double) value(p.getEmergencyFund()) / required;
 
@@ -26,6 +28,13 @@ public class DiagnosisService {
                     "별도 공과금이 있으면 실제 월 주거비가 현재 계산보다 커질 수 있어요.",
                     "임대차 조건 또는 관리비 고지서 확인"));
         }
+        if (p.getMonthlyFood() == null || p.getMonthlyTransport() == null || p.getMonthlyCommunication() == null) {
+            missing.add("독립 후 기본 생활비");
+            questions.add("식비·교통비·통신비 중 아직 확인하지 않은 월 비용이 있나요?");
+            advice.add(new AdviceItem("확인 필요", "독립 후 생활비를 채워 주세요",
+                    "식비·교통·통신은 월세 외에 반복되는 필수비용이라 월 잔액 계산에 필요해요.",
+                    "최근 지출을 참고해 식비·교통비·통신비 입력"));
+        }
         if (p.getInsurance() == null) {
             missing.add("독립 후 직접 납부할 보험료");
             questions.add("독립 후 본인이 직접 납부하게 되는 보험료가 있나요?");
@@ -34,8 +43,8 @@ public class DiagnosisService {
                     "보험 앱에서 계약자·납부자·월 보험료 확인"));
         }
         if (p.getCardPayment() == null) {
-            missing.add("월 카드 결제 예정액");
-            questions.add("최근 3개월 카드 결제액의 월평균은 얼마인가요?");
+            missing.add("미분류 카드·자동이체 비용");
+            questions.add("이미 입력한 비용 외에 카드나 자동이체로 나가는 월 고정비가 있나요?");
         }
         if (p.getEmergencyFund() == null || emergencyMonths < 1) {
             advice.add(new AdviceItem("주의", "비상자금이 필수지출 1개월분보다 적어요",
@@ -46,6 +55,15 @@ public class DiagnosisService {
             advice.add(new AdviceItem("주의", "독립과 함께 종료되는 가족 지원이 있어요",
                     "가족 지원을 제외한 본인 소득만으로 독립 후 예산을 다시 계산해야 해요.",
                     "지원 종료 시점을 반영해 예산 재계산"));
+        }
+        long initialCost = value(p.getMovingCost()) + value(p.getFurnishingCost());
+        if (p.getMovingCost() == null || p.getFurnishingCost() == null) {
+            missing.add("이사·가구 등 초기비용");
+            questions.add("이사비와 입주 직후 필요한 가구·가전 비용을 각각 예상해 보셨나요?");
+        } else if (initialCost > value(p.getEmergencyFund())) {
+            advice.add(new AdviceItem("주의", "초기비용과 비상자금을 분리하세요",
+                    "입주 초기비용이 현재 비상자금보다 커서 입주 뒤 안전자금이 남지 않을 수 있어요.",
+                    "이사·가구 비용을 지급한 뒤 남는 비상자금 재계산"));
         }
         if (advice.isEmpty()) {
             advice.add(new AdviceItem("양호", "핵심 금융정보가 입력되었어요",
@@ -61,12 +79,15 @@ public class DiagnosisService {
         completed += p.getMonthlyRent() != null ? 1 : 0;
         completed += p.getMaintenance() != null ? 1 : 0;
         completed += present(p.getUtilities()) ? 1 : 0;
+        completed += p.getMonthlyFood() != null ? 1 : 0;
+        completed += p.getMonthlyTransport() != null ? 1 : 0;
+        completed += p.getMonthlyCommunication() != null ? 1 : 0;
         completed += p.getInsurance() != null ? 1 : 0;
         completed += p.getDebtPayment() != null ? 1 : 0;
         completed += p.getEmergencyFund() != null ? 1 : 0;
 
         return new DiagnosisResponse(inflow, required, balance,
-                Math.round(emergencyMonths * 10.0) / 10.0, completed * 10,
+                Math.round(emergencyMonths * 10.0) / 10.0, Math.min(100, Math.round(completed / 13f * 100)),
                 missing, questions, advice.stream().limit(3).toList());
     }
 

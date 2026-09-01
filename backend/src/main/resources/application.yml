@@ -3,10 +3,10 @@ server:
 
 spring:
   datasource:
-    url: ${DATABASE_URL:jdbc:h2:file:./data/findependence;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE}
-    username: ${DATABASE_USERNAME:sa}
-    password: ${DATABASE_PASSWORD:}
-    driver-class-name: ${DATABASE_DRIVER:org.h2.Driver}
+    url: ${DATABASE_URL:jdbc:mysql://127.0.0.1:3307/findependence?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC&createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DATABASE_USERNAME:findependence}
+    password: ${DATABASE_PASSWORD:findependence-local}
+    driver-class-name: ${DATABASE_DRIVER:com.mysql.cj.jdbc.Driver}
   jpa:
     open-in-view: false
     hibernate:
@@ -17,15 +17,27 @@ spring:
           time_zone: UTC
   jackson:
     default-property-inclusion: non_null
+    deserialization:
+      accept-float-as-int: false
 
 findependence:
+  auth:
+    jwt-secret: ${JWT_SECRET:}
+    allow-ephemeral-key: ${JWT_ALLOW_EPHEMERAL_KEY:true}
+    cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    ttl-minutes: ${JWT_TTL_MINUTES:30}
+  admin:
+    enabled: ${ADMIN_SEED_ENABLED:false}
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    display-name: ${ADMIN_DISPLAY_NAME:관리자}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://127.0.0.1:4173}
   llm:
     enabled: ${LLM_ENABLED:false}
-    base-url: ${LLM_BASE_URL:http://localhost:1234/v1}
+    base-url: ${LLM_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
     api-key: ${LLM_API_KEY:}
-    model: ${LLM_MODEL:phi-4-mini-instruct}
+    model: ${LLM_MODEL:gemini-2.5-flash}
     temperature: ${LLM_TEMPERATURE:0.2}
   rag:
     enabled: ${RAG_ENABLED:false}

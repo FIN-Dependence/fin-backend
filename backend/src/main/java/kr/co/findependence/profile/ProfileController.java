@@ -1,6 +1,7 @@
 package kr.co.findependence.profile;
 
 import jakarta.validation.Valid;
+import org.springframework.security.core.Authentication;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -21,21 +22,21 @@ public class ProfileController {
 
     public ProfileController(ProfileService service) { this.service = service; }
 
-    @GetMapping("/{clientId}")
-    public ProfileResponse get(@PathVariable @Pattern(regexp = "[A-Za-z0-9_-]{8,80}") String clientId) {
-        return service.get(clientId);
+    @GetMapping("/me")
+    public ProfileResponse get(Authentication authentication) {
+        return service.get(authentication.getName());
     }
 
-    @PutMapping("/{clientId}")
+    @PutMapping("/me")
     public ProfileResponse save(
-            @PathVariable @Pattern(regexp = "[A-Za-z0-9_-]{8,80}") String clientId,
+            Authentication authentication,
             @Valid @RequestBody ProfileRequest request) {
-        return service.save(clientId, request);
+        return service.save(authentication.getName(), request);
     }
 
-    @DeleteMapping("/{clientId}")
+    @DeleteMapping("/me")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable @Pattern(regexp = "[A-Za-z0-9_-]{8,80}") String clientId) {
-        service.delete(clientId);
+    public void delete(Authentication authentication) {
+        service.delete(authentication.getName());
     }
 }

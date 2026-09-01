@@ -51,6 +51,7 @@ export default defineConfig(async () => {
       vinext(),
       sites(),
       cloudflare({
+        ...(process.env.DISABLE_WORKER_INSPECTOR === "true" ? { inspectorPort: false as const } : {}),
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         config: localBindingConfig,
       }),

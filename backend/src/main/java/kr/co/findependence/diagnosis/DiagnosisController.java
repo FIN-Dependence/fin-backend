@@ -2,6 +2,7 @@ package kr.co.findependence.diagnosis;
 
 import jakarta.validation.constraints.Pattern;
 import kr.co.findependence.profile.ProfileService;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,8 +21,8 @@ public class DiagnosisController {
         this.diagnosisService = diagnosisService;
     }
 
-    @GetMapping("/{clientId}")
-    public DiagnosisResponse get(@PathVariable @Pattern(regexp = "[A-Za-z0-9_-]{8,80}") String clientId) {
-        return diagnosisService.diagnose(profileService.require(clientId));
+    @GetMapping("/me")
+    public DiagnosisResponse get(Authentication authentication) {
+        return diagnosisService.diagnose(profileService.require(authentication.getName()));
     }
 }

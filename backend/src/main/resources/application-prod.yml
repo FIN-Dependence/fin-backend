@@ -1,0 +1,8 @@
+# Production requires HTTPS and an externally supplied random signing secret.
+findependence:
+  auth:
+    jwt-secret: ${JWT_SECRET}
+    allow-ephemeral-key: false
+    cookie-secure: true
+  admin:
+    enabled: ${ADMIN_SEED_ENABLED:false}
