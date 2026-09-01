@@ -31,7 +31,8 @@ python scripts/prepare_rag.py `
 
 ## 2. Chroma 환경 설치
 
-노트북 CPU에서도 실행할 수 있지만 5,390건 전체 임베딩은 Google Colab GPU 사용을 권장합니다.
+Python 3.11 가상환경을 권장합니다. 최초 실행에서는 약 1.2GB인 임베딩 모델을 내려받습니다.
+이후에는 Hugging Face 캐시를 재사용합니다.
 
 ```powershell
 pip install -r requirements-rag.txt
@@ -52,6 +53,8 @@ python scripts/build_chroma.py --reset
 ```
 
 DB는 `chroma_db` 폴더에 영구 저장됩니다.
+`build_manifest.json`에는 입력 JSONL의 SHA-256, 문서 수, 컬렉션명, 임베딩 모델과
+고정 revision이 기록됩니다. 따라서 팀원이 같은 입력과 모델을 사용했는지 확인할 수 있습니다.
 
 ## 4. 검색
 
@@ -60,3 +63,49 @@ python scripts/query_chroma.py "월소득 245만원이고 월세 65만원이면 
 ```
 
 검색 결과는 공식 통계 3개와 금융상담 예시 2개로 분리됩니다. 금융상담 자료는 실제 계좌 조회 결과가 아닌 상담 예시이므로, LLM 프롬프트에서 개인의 실제 금융정보처럼 단정하지 않도록 제한해야 합니다.
+
+## 5. 팀원에게 똑같은 Chroma DB 전달
+
+현재 저장소에는 팀 시연용 5,390건 `chroma_db` 스냅샷이 포함되어 있어 clone 직후 사용할 수 있습니다.
+이후 DB를 다시 생성하거나 자주 갱신할 때는 거대한 바이너리 이력이 누적되지 않도록 다음 명령으로
+공유 ZIP과 SHA-256 파일을 만드는 방식을 권장합니다.
+
+```powershell
+python scripts/package_chroma.py
+```
+
+생성 위치:
+
+```text
+rag/dist/findependence-chroma-<입력해시>.zip
+rag/dist/findependence-chroma-<입력해시>.zip.sha256
+```
+
+두 파일은 GitHub 저장소의 **Releases → Draft a new release**에 첨부합니다. DB를 갱신할 때마다
+새 버전의 Release를 만들면 Git 이력이 거대한 바이너리로 누적되지 않습니다.
+
+팀원은 Release의 ZIP과 SHA-256 값을 받은 뒤 다음처럼 설치합니다.
+
+```powershell
+python scripts/install_chroma_snapshot.py `
+  "C:\Users\사용자\Downloads\findependence-chroma-xxxx.zip" `
+  --sha256 "sha256파일의 첫 번째 값"
+```
+
+그 결과 `rag/chroma_db`가 생성되며 곧바로 `query_chroma.py`를 실행할 수 있습니다.
+기존 DB를 교체할 때만 `--replace`를 추가합니다.
+
+### 직접 재생성하는 방법
+
+Release를 받지 않아도 저장소에 포함된 동일한 5,390건 JSONL과 고정된 Qwen 모델 revision으로
+각 컴퓨터에서 재생성할 수 있습니다.
+
+```powershell
+pip install -r requirements-rag.txt
+python scripts/build_chroma.py --reset
+python scripts/query_chroma.py "독립 후 누락될 수 있는 비용을 알려줘"
+```
+
+공유 ZIP 방식은 DB 파일까지 동일하고, 직접 재생성 방식은 문서·ID·모델 조건이 동일합니다.
+여러 사용자가 인터넷을 통해 하나의 실시간 DB를 동시에 조회해야 한다면 파일 공유가 아니라
+별도 Chroma 서버 또는 관리형 벡터 DB를 배포해야 합니다.

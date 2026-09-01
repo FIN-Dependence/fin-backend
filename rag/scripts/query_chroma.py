@@ -8,7 +8,7 @@ from typing import Any
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-from build_chroma import COLLECTION_NAME, MODEL_NAME
+from build_chroma import COLLECTION_NAME, MODEL_NAME, MODEL_REVISION
 
 
 QUERY_INSTRUCTION = (
@@ -59,13 +59,14 @@ def main() -> None:
     parser.add_argument("--db-path", type=Path, default=root / "chroma_db")
     parser.add_argument("--collection", default=COLLECTION_NAME)
     parser.add_argument("--model", default=MODEL_NAME)
+    parser.add_argument("--model-revision", default=MODEL_REVISION)
     parser.add_argument("--official-results", type=int, default=3)
     parser.add_argument("--dialogue-results", type=int, default=2)
     args = parser.parse_args()
 
     client = chromadb.PersistentClient(path=str(args.db_path))
     collection = client.get_collection(args.collection)
-    model = SentenceTransformer(args.model)
+    model = SentenceTransformer(args.model, revision=args.model_revision)
 
     official = search(
         collection,

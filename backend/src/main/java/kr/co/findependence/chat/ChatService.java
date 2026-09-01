@@ -34,8 +34,8 @@ public class ChatService {
     }
 
     @Transactional
-    public ChatResponse chat(ChatRequest request) {
-        ProfileEntity profile = profileService.require(request.clientId());
+    public ChatResponse chat(String userId, ChatRequest request) {
+        ProfileEntity profile = profileService.require(userId);
         DiagnosisResponse diagnosis = diagnosisService.diagnose(profile);
         List<RagContextService.RagHit> ragHits = ragContextService.search(request.message());
         List<RagContextService.RagHit> officialHits = ragHits.stream()
@@ -43,9 +43,9 @@ public class ChatService {
         List<RagContextService.RagHit> dialogueHits = ragHits.stream()
                 .filter(hit -> "dialogue".equals(hit.category())).toList();
 
-        messageRepository.save(new ChatMessageEntity(request.clientId(), "user", request.message()));
+        messageRepository.save(new ChatMessageEntity(userId, "user", request.message()));
         List<ChatMessageEntity> recent = new ArrayList<>(messageRepository
-                .findTop10ByClientIdOrderByCreatedAtDesc(request.clientId()));
+                .findTop10ByClientIdOrderByCreatedAtDesc(userId));
         Collections.reverse(recent);
 
         String answer = llmClient.complete(
@@ -53,10 +53,19 @@ public class ChatService {
                         buildUserPrompt(profile, diagnosis, recent, officialHits, dialogueHits, request.message()))
                 .orElseGet(() -> fallback(profile, diagnosis, request.message()));
 
-        messageRepository.save(new ChatMessageEntity(request.clientId(), "assistant", answer));
+        messageRepository.save(new ChatMessageEntity(userId, "assistant", answer));
         return new ChatResponse(answer, diagnosis.advice(),
                 ragHits.stream().map(RagContextService.RagHit::source).filter(s -> !s.isBlank()).distinct().toList(),
                 Instant.now());
+    }
+
+    public record HistoryMessage(String role, String text, Instant createdAt) {}
+
+    @Transactional(readOnly = true)
+    public List<HistoryMessage> history(String userId) {
+        var messages = new ArrayList<>(messageRepository.findTop50ByClientIdOrderByCreatedAtDesc(userId));
+        Collections.reverse(messages);
+        return messages.stream().map(m -> new HistoryMessage(m.getRole(), m.getContent(), m.getCreatedAt())).toList();
     }
 
     private String systemPrompt() {
@@ -86,7 +95,9 @@ public class ChatService {
         return """
                 [사용자 금융환경]
                 이름=%s, 나이=%s, 취업=%s, 월소득=%s원, 월세=%s원, 관리비=%s원,
-                보험료=%s원, 부채상환=%s원, 카드결제=%s원, 비상자금=%s원,
+                별도공과금=%s원, 식비=%s원, 교통비=%s원, 통신비=%s원,
+                보험료=%s원, 부채상환=%s원, 미분류 카드·자동이체=%s원, 기타고정비=%s원,
+                비상자금=%s원, 이사비=%s원, 가구·가전비=%s원,
                 가족지원=%s원, 독립 후 지원종료=%s, 관리비 확인=%s
 
                 [확정 계산]
@@ -105,8 +116,10 @@ public class ChatService {
                 [현재 질문]
                 %s
                 """.formatted(text(p.getName()), text(p.getAge()), text(p.getEmployment()), text(p.getMonthlyIncome()),
-                text(p.getMonthlyRent()), text(p.getMaintenance()), text(p.getInsurance()), text(p.getDebtPayment()),
-                text(p.getCardPayment()), text(p.getEmergencyFund()), text(p.getFamilySupport()), p.isFamilySupportEnds(),
+                text(p.getMonthlyRent()), text(p.getMaintenance()), text(p.getMonthlyUtilities()), text(p.getMonthlyFood()),
+                text(p.getMonthlyTransport()), text(p.getMonthlyCommunication()), text(p.getInsurance()), text(p.getDebtPayment()),
+                text(p.getCardPayment()), text(p.getOtherFixedCost()), text(p.getEmergencyFund()), text(p.getMovingCost()),
+                text(p.getFurnishingCost()), text(p.getFamilySupport()), p.isFamilySupportEnds(),
                 text(p.getUtilities()), d.monthlyInflow(), d.confirmedRequiredExpenses(), d.expectedBalance(),
                 d.emergencyMonths(), d.missingItems(), d.followUpQuestions(), history,
                 official.isBlank() ? "검색된 자료 없음" : official,

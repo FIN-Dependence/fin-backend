@@ -14,12 +14,13 @@ from sentence_transformers import SentenceTransformer
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from build_chroma import COLLECTION_NAME, MODEL_NAME  # noqa: E402
+from build_chroma import COLLECTION_NAME, MODEL_NAME, MODEL_REVISION  # noqa: E402
 from query_chroma import search as run_search  # noqa: E402
 
 DB_PATH = Path(os.environ.get("RAG_DB_PATH", str(ROOT / "chroma_db")))
 COLLECTION = os.environ.get("RAG_COLLECTION", COLLECTION_NAME)
 MODEL_ID = os.environ.get("RAG_MODEL_NAME", MODEL_NAME)
+MODEL_REVISION_ID = os.environ.get("RAG_MODEL_REVISION", MODEL_REVISION)
 DEFAULT_OFFICIAL_RESULTS = int(os.environ.get("RAG_OFFICIAL_RESULTS", "3"))
 DEFAULT_DIALOGUE_RESULTS = int(os.environ.get("RAG_DIALOGUE_RESULTS", "2"))
 
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI):
         )
     client = chromadb.PersistentClient(path=str(DB_PATH))
     state["collection"] = client.get_collection(COLLECTION)
-    state["model"] = SentenceTransformer(MODEL_ID)
+    state["model"] = SentenceTransformer(MODEL_ID, revision=MODEL_REVISION_ID)
     yield
     state.clear()
 

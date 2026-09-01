@@ -1,4 +1,7 @@
 spring:
+  jackson:
+    deserialization:
+      accept-float-as-int: false
   datasource:
     url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
     username: sa
@@ -8,6 +11,16 @@ spring:
     hibernate:
       ddl-auto: create-drop
 findependence:
+  auth:
+    jwt-secret: test-only-signing-key-not-for-production-32-bytes
+    allow-ephemeral-key: false
+    cookie-secure: false
+    ttl-minutes: 30
+  admin:
+    enabled: false
+    email: ""
+    password: ""
+    display-name: 관리자
   cors:
     allowed-origins: http://localhost:3000
   llm:
@@ -18,5 +31,7 @@ findependence:
     temperature: 0.2
   rag:
     enabled: false
-    data-path: ""
-    max-results: 4
+    search-url: http://localhost:8000
+    timeout-ms: 5000
+    official-results: 3
+    dialogue-results: 2

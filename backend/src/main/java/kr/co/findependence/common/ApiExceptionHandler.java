@@ -13,6 +13,17 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(kr.co.findependence.auth.AuthException.class)
+    public ResponseEntity<Map<String, Object>> auth(kr.co.findependence.auth.AuthException exception) {
+        return error(exception.status, exception.getMessage());
+    }
+
+    @ExceptionHandler({org.springframework.http.converter.HttpMessageNotReadableException.class,
+            jakarta.validation.ConstraintViolationException.class})
+    public ResponseEntity<Map<String, Object>> malformed(Exception exception) {
+        return error(HttpStatus.BAD_REQUEST, "입력 형식과 값의 범위를 확인해 주세요.");
+    }
+
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<Map<String, Object>> notFound(EntityNotFoundException exception) {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());

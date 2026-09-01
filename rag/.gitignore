@@ -1,4 +1,4 @@
 chroma_db/
+dist/
 __pycache__/
 *.pyc
-

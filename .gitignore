@@ -7,8 +7,13 @@ data/raw/*
 work/test_data_fixture/
 
 # Runtime secrets and generated artifacts
+# Local secrets. Only documented placeholder files may be committed.
 .env
-.env.local
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 frontend/node_modules/
 frontend/.next/
 frontend/.vinext/
@@ -16,5 +21,7 @@ frontend/.wrangler/
 frontend/.npm-cache/
 frontend/dist/
 backend/target/
+backend/.runtime-tmp/
 backend/data/
 rag/chroma_db/
+rag/dist/

@@ -24,10 +24,17 @@ public class ProfileEntity {
     private Long monthlyRent;
     private Long maintenance;
     private String utilities;
+    private Long monthlyUtilities;
+    private Long monthlyFood;
+    private Long monthlyTransport;
+    private Long monthlyCommunication;
     private Long insurance;
     private Long debtPayment;
     private Long cardPayment;
+    private Long otherFixedCost;
     private Long emergencyFund;
+    private Long movingCost;
+    private Long furnishingCost;
     private Long familySupport;
     private boolean familySupportEnds;
     private LocalDate moveDate;
@@ -53,10 +60,17 @@ public class ProfileEntity {
         monthlyRent = request.monthlyRent();
         maintenance = request.maintenance();
         utilities = request.utilities();
+        monthlyUtilities = request.monthlyUtilities();
+        monthlyFood = request.monthlyFood();
+        monthlyTransport = request.monthlyTransport();
+        monthlyCommunication = request.monthlyCommunication();
         insurance = request.insurance();
         debtPayment = request.debtPayment();
         cardPayment = request.cardPayment();
+        otherFixedCost = request.otherFixedCost();
         emergencyFund = request.emergencyFund();
+        movingCost = request.movingCost();
+        furnishingCost = request.furnishingCost();
         familySupport = request.familySupport();
         familySupportEnds = request.familySupportEnds();
         moveDate = request.moveDate();
@@ -73,10 +87,17 @@ public class ProfileEntity {
     public Long getMonthlyRent() { return monthlyRent; }
     public Long getMaintenance() { return maintenance; }
     public String getUtilities() { return utilities; }
+    public Long getMonthlyUtilities() { return monthlyUtilities; }
+    public Long getMonthlyFood() { return monthlyFood; }
+    public Long getMonthlyTransport() { return monthlyTransport; }
+    public Long getMonthlyCommunication() { return monthlyCommunication; }
     public Long getInsurance() { return insurance; }
     public Long getDebtPayment() { return debtPayment; }
     public Long getCardPayment() { return cardPayment; }
+    public Long getOtherFixedCost() { return otherFixedCost; }
     public Long getEmergencyFund() { return emergencyFund; }
+    public Long getMovingCost() { return movingCost; }
+    public Long getFurnishingCost() { return furnishingCost; }
     public Long getFamilySupport() { return familySupport; }
     public boolean isFamilySupportEnds() { return familySupportEnds; }
     public LocalDate getMoveDate() { return moveDate; }
