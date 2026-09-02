@@ -38,6 +38,10 @@ public class ChatService {
         ProfileEntity profile = profileService.require(request.clientId());
         DiagnosisResponse diagnosis = diagnosisService.diagnose(profile);
         List<RagContextService.RagHit> ragHits = ragContextService.search(request.message());
+        List<RagContextService.RagHit> officialHits = ragHits.stream()
+                .filter(hit -> "official".equals(hit.category())).toList();
+        List<RagContextService.RagHit> dialogueHits = ragHits.stream()
+                .filter(hit -> "dialogue".equals(hit.category())).toList();
 
         messageRepository.save(new ChatMessageEntity(request.clientId(), "user", request.message()));
         List<ChatMessageEntity> recent = new ArrayList<>(messageRepository
@@ -46,7 +50,7 @@ public class ChatService {
 
         String answer = llmClient.complete(
                         systemPrompt(),
-                        buildUserPrompt(profile, diagnosis, recent, ragHits, request.message()))
+                        buildUserPrompt(profile, diagnosis, recent, officialHits, dialogueHits, request.message()))
                 .orElseGet(() -> fallback(profile, diagnosis, request.message()));
 
         messageRepository.save(new ChatMessageEntity(request.clientId(), "assistant", answer));
@@ -59,6 +63,7 @@ public class ChatService {
         return """
                 당신은 첫 독립을 준비하는 한국 청년을 위한 금융자립 상담 AI다.
                 확인된 사용자 정보, Java 계산 결과, 제공된 공식자료 근거만 사용한다.
+                [상담 예시]는 참고용 대화 사례일 뿐 공식 근거가 아니다. 공식 근거인 것처럼 인용하지 않는다.
                 확인되지 않은 금액을 0원으로 단정하지 말고 필요한 추가질문을 한다.
                 통계 평균을 개인의 위험 기준으로 단정하지 않는다.
                 답변은 쉬운 한국어로 핵심 진단, 근거, 다음 행동을 짧게 제시한다.
@@ -67,12 +72,16 @@ public class ChatService {
     }
 
     private String buildUserPrompt(ProfileEntity p, DiagnosisResponse d, List<ChatMessageEntity> recent,
-                                   List<RagContextService.RagHit> hits, String question) {
+                                   List<RagContextService.RagHit> officialHits,
+                                   List<RagContextService.RagHit> dialogueHits, String question) {
         String history = recent.stream()
                 .map(m -> m.getRole() + ": " + m.getContent())
                 .collect(Collectors.joining("\n"));
-        String evidence = hits.stream()
+        String official = officialHits.stream()
                 .map(hit -> "- " + hit.text() + (hit.source().isBlank() ? "" : " (출처: " + hit.source() + ")"))
+                .collect(Collectors.joining("\n"));
+        String dialogue = dialogueHits.stream()
+                .map(hit -> "- " + hit.text())
                 .collect(Collectors.joining("\n"));
         return """
                 [사용자 금융환경]
@@ -90,6 +99,9 @@ public class ChatService {
                 [공식자료 검색 결과]
                 %s
 
+                [상담 예시 (참고용, 공식 근거 아님)]
+                %s
+
                 [현재 질문]
                 %s
                 """.formatted(text(p.getName()), text(p.getAge()), text(p.getEmployment()), text(p.getMonthlyIncome()),
@@ -97,7 +109,9 @@ public class ChatService {
                 text(p.getCardPayment()), text(p.getEmergencyFund()), text(p.getFamilySupport()), p.isFamilySupportEnds(),
                 text(p.getUtilities()), d.monthlyInflow(), d.confirmedRequiredExpenses(), d.expectedBalance(),
                 d.emergencyMonths(), d.missingItems(), d.followUpQuestions(), history,
-                evidence.isBlank() ? "검색된 자료 없음" : evidence, question);
+                official.isBlank() ? "검색된 자료 없음" : official,
+                dialogue.isBlank() ? "검색된 상담 예시 없음" : dialogue,
+                question);
     }
 
     private String fallback(ProfileEntity p, DiagnosisResponse d, String question) {
