@@ -43,7 +43,9 @@ public class ProfileEntity {
     private Long familySupport;
     private boolean familySupportEnds;
     private LocalDate moveDate;
+    @Column(name = "created_at")
     private Instant createdAt;
+    @Column(name = "updated_at")
     private Instant updatedAt;
     @Version
     private long version;
