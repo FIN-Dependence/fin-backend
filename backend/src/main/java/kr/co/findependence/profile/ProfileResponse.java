@@ -5,6 +5,7 @@ import java.time.LocalDate;
 
 public record ProfileResponse(
         String clientId,
+        String title,
         String name,
         Integer age,
         String employment,
@@ -31,7 +32,7 @@ public record ProfileResponse(
         Instant updatedAt
 ) {
     public static ProfileResponse from(ProfileEntity p) {
-        return new ProfileResponse(p.getClientId(), p.getName(), p.getAge(), p.getEmployment(),
+        return new ProfileResponse(p.getClientId(), p.getTitle(), p.getName(), p.getAge(), p.getEmployment(),
                 p.getMonthlyIncome(), p.getHousingType(), p.getDeposit(), p.getMonthlyRent(),
                 p.getMaintenance(), p.getUtilities(), p.getMonthlyUtilities(), p.getMonthlyFood(),
                 p.getMonthlyTransport(), p.getMonthlyCommunication(), p.getInsurance(), p.getDebtPayment(),

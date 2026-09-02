@@ -1,4 +1,5 @@
 export type FinancialProfile = {
+  title: string;
   name: string;
   age: string;
   employment: string;
@@ -37,6 +38,7 @@ type ProfileResponse = Omit<FinancialProfile,
   "insurance" | "debtPayment" | "cardPayment" | "otherFixedCost" | "emergencyFund" |
   "movingCost" | "furnishingCost" | "familySupport" | "moveDate"
 > & {
+  clientId: string;
   age: number | null;
   monthlyIncome: number | null;
   deposit: number | null;
@@ -121,34 +123,37 @@ export async function logout() {
   csrf = null;
 }
 export type HistoryMessage = { role: "user" | "assistant"; text: string; createdAt: string };
-export async function loadHistory(): Promise<HistoryMessage[]> {
-  return (await apiFetch("/api/chat/history")).json();
+export type StoredEnvironment = { id: string; profile: FinancialProfile; savedAt: string };
+export async function loadHistory(environmentId: string): Promise<HistoryMessage[]> {
+  return (await apiFetch(`/api/chat/history?environmentId=${encodeURIComponent(environmentId)}`)).json();
 }
 
-export async function loadRemoteProfile(): Promise<{ profile: FinancialProfile; savedAt: string } | null> {
-  const response = await apiFetch("/api/profiles/me", {}, true);
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error("금융환경을 불러오지 못했습니다.");
-  const data = await response.json() as ProfileResponse;
-  return { profile: fromApi(data), savedAt: formatSavedAt(data.updatedAt) };
+export async function loadRemoteProfiles(): Promise<StoredEnvironment[]> {
+  const response = await apiFetch("/api/profiles");
+  const data = await response.json() as ProfileResponse[];
+  return data.map(toStoredEnvironment);
 }
 
-export async function saveRemoteProfile(profile: FinancialProfile) {
-  const response = await apiFetch("/api/profiles/me", {
-    method: "PUT",
+export async function saveRemoteProfile(environmentId: string | null, profile: FinancialProfile) {
+  const response = await apiFetch(environmentId ? `/api/profiles/${encodeURIComponent(environmentId)}` : "/api/profiles", {
+    method: environmentId ? "PUT" : "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(toApi(profile)),
   });
   if (!response.ok) throw new Error(await errorMessage(response, "금융환경을 저장하지 못했습니다."));
   const data = await response.json() as ProfileResponse;
-  return { profile: fromApi(data), savedAt: formatSavedAt(data.updatedAt) };
+  return toStoredEnvironment(data);
 }
 
-export async function sendChat(message: string): Promise<ChatResponse> {
+export async function deleteRemoteProfile(environmentId: string) {
+  await apiFetch(`/api/profiles/${encodeURIComponent(environmentId)}`, { method: "DELETE" });
+}
+
+export async function sendChat(environmentId: string, message: string): Promise<ChatResponse> {
   const response = await apiFetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ environmentId, message }),
   });
   if (!response.ok) throw new Error(await errorMessage(response, "AI 상담에 연결하지 못했습니다."));
   return response.json();
@@ -182,6 +187,7 @@ function toApi(profile: FinancialProfile) {
 function fromApi(data: ProfileResponse): FinancialProfile {
   const text = (value: number | null) => value == null ? "" : String(value);
   return {
+    title: data.title || "나의 독립 환경",
     name: data.name || "",
     age: data.age == null ? "" : String(data.age),
     employment: data.employment,
@@ -206,6 +212,10 @@ function fromApi(data: ProfileResponse): FinancialProfile {
     familySupportEnds: data.familySupportEnds,
     moveDate: data.moveDate || "",
   };
+}
+
+function toStoredEnvironment(data: ProfileResponse): StoredEnvironment {
+  return { id: data.clientId, profile: fromApi(data), savedAt: formatSavedAt(data.updatedAt) };
 }
 
 async function errorMessage(response: Response, fallback: string) {

@@ -25,4 +25,9 @@ public class DiagnosisController {
     public DiagnosisResponse get(Authentication authentication) {
         return diagnosisService.diagnose(profileService.require(authentication.getName()));
     }
+
+    @GetMapping("/{environmentId}")
+    public DiagnosisResponse get(Authentication authentication, @PathVariable String environmentId) {
+        return diagnosisService.diagnose(profileService.require(authentication.getName(), environmentId));
+    }
 }

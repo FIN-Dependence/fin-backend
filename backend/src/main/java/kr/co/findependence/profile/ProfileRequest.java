@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Pattern;
 import java.time.LocalDate;
 
 public record ProfileRequest(
+        @Size(max = 40) String title,
         @Size(max = 40) String name,
         @NotNull @Min(19) @Max(39) Integer age,
         @NotBlank @Pattern(regexp = "첫 취업 · 정규직|계약직|프리랜서|구직 중|대학생 · 대학원생") String employment,

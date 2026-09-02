@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -22,7 +23,8 @@ public class ChatController {
     }
 
     @GetMapping("/history")
-    public List<ChatService.HistoryMessage> history(Authentication authentication) {
-        return service.history(authentication.getName());
+    public List<ChatService.HistoryMessage> history(Authentication authentication,
+                                                    @RequestParam String environmentId) {
+        return service.history(authentication.getName(), environmentId);
     }
 }

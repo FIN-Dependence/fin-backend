@@ -129,15 +129,27 @@ class AuthIntegrationTest {
         mvc.perform(get("/api/diagnoses/" + a.id()).cookie(b.cookie())).andExpect(status().is4xxClientError());
         mvc.perform(secured(put("/api/profiles/me")).cookie(b.cookie()).contentType(MediaType.APPLICATION_JSON)
                 .content(PROFILE.replace("Alice", "Bob").replace("2450000", "1900000"))).andExpect(status().isOk());
-        // Supplying another user's clientId is ignored. The only ownership source is the verified JWT.
+        // The selected environment must belong to the verified JWT owner.
         mvc.perform(secured(post("/api/chat")).cookie(a.cookie()).contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("clientId", b.id(), "message", "독립 가능할까?"))))
+                .content(json.writeValueAsString(Map.of("environmentId", a.id(), "message", "독립 가능할까?"))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.containsString("Alice")));
-        mvc.perform(get("/api/chat/history").cookie(b.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
-        mvc.perform(get("/api/chat/history").cookie(a.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+        mvc.perform(get("/api/chat/history").param("environmentId", b.id()).cookie(b.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get("/api/chat/history").param("environmentId", a.id()).cookie(a.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
         mvc.perform(get("/api/profiles/me").cookie(a.cookie())).andExpect(jsonPath("$.monthlyIncome").value(2450000));
         mvc.perform(secured(delete("/api/profiles/me")).cookie(b.cookie())).andExpect(status().isNoContent());
         mvc.perform(get("/api/profiles/me").cookie(a.cookie())).andExpect(status().isOk());
+    }
+
+    @Test void accountCanStoreAtMostFiveIndependentEnvironments() throws Exception {
+        var a = account();
+        for (int i = 1; i <= 5; i++) {
+            String profile = PROFILE.replace("{\"name\"", "{\"title\":\"환경 " + i + "\",\"name\"");
+            mvc.perform(secured(post("/api/profiles")).cookie(a.cookie()).contentType(MediaType.APPLICATION_JSON).content(profile))
+                    .andExpect(status().isCreated()).andExpect(jsonPath("$.title").value("환경 " + i));
+        }
+        mvc.perform(get("/api/profiles").cookie(a.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(5));
+        mvc.perform(secured(post("/api/profiles")).cookie(a.cookie()).contentType(MediaType.APPLICATION_JSON).content(PROFILE))
+                .andExpect(status().isConflict());
     }
     @Test void profileValidationRejectsBadAgeNegativeAmountsAndMalformedBody() throws Exception {
         var a = account();

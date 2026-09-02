@@ -43,14 +43,18 @@ test("keeps the Java API integration in the client application", async () => {
     readFile(new URL("../app/api.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.match(app, /loadRemoteProfile/);
+  assert.match(app, /loadRemoteProfiles/);
   assert.match(app, /saveRemoteProfile/);
   assert.match(app, /sendChat/);
+  assert.match(app, /가계부/);
+  assert.match(app, /환경 비교/);
+  assert.match(app, /environments\.length >= 5/);
   assert.match(api, /NEXT_PUBLIC_API_BASE_URL/);
   assert.match(api, /\/api\/profiles\//);
   assert.match(api, /\/api\/chat/);
   assert.match(api, /credentials: "include"/);
   assert.doesNotMatch(api, /localStorage\.(getItem|setItem)/);
   assert.doesNotMatch(app, /localStorage\.(getItem|setItem)/);
+  assert.match(api, /environmentId/);
   assert.doesNotMatch(api, /JSON.stringify\(\{ clientId/);
 });

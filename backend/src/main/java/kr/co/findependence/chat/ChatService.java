@@ -35,7 +35,7 @@ public class ChatService {
 
     @Transactional
     public ChatResponse chat(String userId, ChatRequest request) {
-        ProfileEntity profile = profileService.require(userId);
+        ProfileEntity profile = profileService.require(userId, request.environmentId());
         DiagnosisResponse diagnosis = diagnosisService.diagnose(profile);
         List<RagContextService.RagHit> ragHits = ragContextService.search(request.message());
         List<RagContextService.RagHit> officialHits = ragHits.stream()
@@ -43,9 +43,9 @@ public class ChatService {
         List<RagContextService.RagHit> dialogueHits = ragHits.stream()
                 .filter(hit -> "dialogue".equals(hit.category())).toList();
 
-        messageRepository.save(new ChatMessageEntity(userId, "user", request.message()));
+        messageRepository.save(new ChatMessageEntity(userId, request.environmentId(), "user", request.message()));
         List<ChatMessageEntity> recent = new ArrayList<>(messageRepository
-                .findTop10ByClientIdOrderByCreatedAtDesc(userId));
+                .findTop10ByClientIdAndEnvironmentIdOrderByCreatedAtDesc(userId, request.environmentId()));
         Collections.reverse(recent);
 
         String answer = llmClient.complete(
@@ -53,7 +53,7 @@ public class ChatService {
                         buildUserPrompt(profile, diagnosis, recent, officialHits, dialogueHits, request.message()))
                 .orElseGet(() -> fallback(profile, diagnosis, request.message()));
 
-        messageRepository.save(new ChatMessageEntity(userId, "assistant", answer));
+        messageRepository.save(new ChatMessageEntity(userId, request.environmentId(), "assistant", answer));
         return new ChatResponse(answer, diagnosis.advice(),
                 ragHits.stream().map(RagContextService.RagHit::source).filter(s -> !s.isBlank()).distinct().toList(),
                 Instant.now());
@@ -62,10 +62,17 @@ public class ChatService {
     public record HistoryMessage(String role, String text, Instant createdAt) {}
 
     @Transactional(readOnly = true)
-    public List<HistoryMessage> history(String userId) {
-        var messages = new ArrayList<>(messageRepository.findTop50ByClientIdOrderByCreatedAtDesc(userId));
+    public List<HistoryMessage> history(String userId, String environmentId) {
+        profileService.require(userId, environmentId);
+        var messages = new ArrayList<>(messageRepository
+                .findTop50ByClientIdAndEnvironmentIdOrderByCreatedAtDesc(userId, environmentId));
         Collections.reverse(messages);
         return messages.stream().map(m -> new HistoryMessage(m.getRole(), m.getContent(), m.getCreatedAt())).toList();
+    }
+
+    @Transactional
+    public void deleteHistory(String userId, String environmentId) {
+        messageRepository.deleteByClientIdAndEnvironmentId(userId, environmentId);
     }
 
     private String systemPrompt() {

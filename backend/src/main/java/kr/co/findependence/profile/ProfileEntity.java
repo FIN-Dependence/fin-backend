@@ -5,16 +5,21 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import jakarta.persistence.Index;
 
 import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "financial_profiles")
+@Table(name = "financial_profiles", indexes = @Index(name = "idx_profile_owner_updated", columnList = "owner_id,updated_at"))
 public class ProfileEntity {
     @Id
     @Column(length = 80)
     private String clientId;
+    @Column(name = "owner_id", length = 80)
+    private String ownerId;
+    @Column(length = 40)
+    private String title;
     private String name;
     private Integer age;
     private String employment;
@@ -45,12 +50,21 @@ public class ProfileEntity {
 
     protected ProfileEntity() {}
 
-    public ProfileEntity(String clientId) {
+    public ProfileEntity(String clientId, String ownerId, String title) {
         this.clientId = clientId;
+        this.ownerId = ownerId;
+        this.title = title;
         this.createdAt = Instant.now();
     }
 
+    public void claimLegacy(String ownerId) {
+        if (this.ownerId == null) this.ownerId = ownerId;
+        if (this.title == null || this.title.isBlank()) this.title = "나의 첫 독립";
+        this.updatedAt = Instant.now();
+    }
+
     public void update(ProfileRequest request) {
+        if (request.title() != null && !request.title().isBlank()) title = request.title().trim();
         name = request.name();
         age = request.age();
         employment = request.employment();
@@ -78,6 +92,8 @@ public class ProfileEntity {
     }
 
     public String getClientId() { return clientId; }
+    public String getOwnerId() { return ownerId; }
+    public String getTitle() { return title; }
     public String getName() { return name; }
     public Integer getAge() { return age; }
     public String getEmployment() { return employment; }

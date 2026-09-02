@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { AuthUser, loadHistory, loadRemoteProfile, saveRemoteProfile, sendChat } from "./api";
+import { AuthUser, deleteRemoteProfile, loadHistory, loadRemoteProfiles, saveRemoteProfile, sendChat, StoredEnvironment } from "./api";
 
 type Profile = {
+  title: string;
   name: string;
   age: string;
   employment: string;
@@ -44,6 +45,7 @@ type Message = {
 };
 
 const emptyProfile: Profile = {
+  title: "나의 첫 독립",
   name: "",
   age: "",
   employment: "첫 취업 · 정규직",
@@ -166,7 +168,9 @@ function MoneyInput({ label, value, onChange, placeholder, required = false }: {
 }
 
 export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout: () => Promise<void> }) {
-  const [view, setView] = useState<"chat" | "survey">("chat");
+  const [view, setView] = useState<"chat" | "survey" | "ledger" | "compare">("chat");
+  const [environments, setEnvironments] = useState<StoredEnvironment[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [draft, setDraft] = useState<Profile>(emptyProfile);
   const [saved, setSaved] = useState(false);
@@ -185,9 +189,14 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
   useEffect(() => {
     let active = true;
     // Anonymous browser data has no verified account owner; never import it automatically.
-    Promise.all([loadRemoteProfile(), loadHistory()]).then(([remote, history]) => {
+    loadRemoteProfiles().then(async (items) => {
+      if (!active) return;
+      const remote = items[0] || null;
+      const history = remote ? await loadHistory(remote.id) : [];
       if (!active) return;
       const loaded = remote ? { ...emptyProfile, ...remote.profile } : { ...emptyProfile, name: user.displayName };
+      setEnvironments(items);
+      setActiveId(remote?.id || null);
       setProfile(loaded);
       setDraft(loaded);
       setSaved(!!remote);
@@ -213,6 +222,13 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
   }, []);
 
   const summary = useMemo(() => getSummary(profile), [profile]);
+  const ledgerRows = useMemo(() => [
+    ["주거비", money(profile.monthlyRent) + money(profile.maintenance) + money(profile.monthlyUtilities)],
+    ["식비", money(profile.monthlyFood)], ["교통비", money(profile.monthlyTransport)],
+    ["통신비", money(profile.monthlyCommunication)], ["보험료", money(profile.insurance)],
+    ["대출 상환", money(profile.debtPayment)], ["카드·자동이체", money(profile.cardPayment)],
+    ["기타 고정비", money(profile.otherFixedCost)],
+  ] as [string, number][], [profile]);
   const completion = useMemo(() => {
     const keys: (keyof Profile)[] = ["age", "employment", "monthlyIncome", "housingType", "monthlyRent", "maintenance", "utilities",
       "monthlyUtilities", "monthlyFood", "monthlyTransport", "monthlyCommunication", "insurance", "debtPayment", "emergencyFund"];
@@ -228,6 +244,54 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
     setView("survey");
   }
 
+  async function selectEnvironment(environment: StoredEnvironment, nextView: "chat" | "ledger" | "survey" = "chat") {
+    if (waiting) return;
+    setWaiting(true); setError("");
+    try {
+      const history = await loadHistory(environment.id);
+      const loaded = { ...emptyProfile, ...environment.profile };
+      setActiveId(environment.id); setProfile(loaded); setDraft(loaded);
+      setSaved(true); setSavedAt(environment.savedAt); setView(nextView);
+      setMessages(history.length ? history.map((m, i) => ({ id: i + 1, role: m.role, text: m.text })) : initialMessages);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "금융환경을 전환하지 못했습니다."); }
+    finally { setWaiting(false); }
+  }
+
+  function startNewEnvironment() {
+    if (environments.length >= 5) {
+      setError("금융환경은 최대 5개까지 저장할 수 있어요. 비교 화면에서 사용하지 않는 환경을 삭제해 주세요.");
+      setView("compare");
+      return;
+    }
+    const blank = { ...emptyProfile, title: `독립 환경 ${environments.length + 1}`, name: user.displayName };
+    setActiveId(null); setProfile(blank); setDraft(blank); setSaved(false); setSavedAt("");
+    setMessages(initialMessages); setInput(""); setError(""); setView("survey");
+  }
+
+  async function removeEnvironment(environmentId: string) {
+    if (!window.confirm("이 금융환경과 연결된 상담 기록을 삭제할까요?")) return;
+    setWaiting(true); setError("");
+    try {
+      await deleteRemoteProfile(environmentId);
+      const remaining = environments.filter(item => item.id !== environmentId);
+      setEnvironments(remaining);
+      if (activeId === environmentId) {
+        if (remaining[0]) {
+          const next = remaining[0];
+          const history = await loadHistory(next.id);
+          const loaded = { ...emptyProfile, ...next.profile };
+          setActiveId(next.id); setProfile(loaded); setDraft(loaded); setSaved(true); setSavedAt(next.savedAt);
+          setMessages(history.length ? history.map((m, i) => ({ id: i + 1, role: m.role, text: m.text })) : initialMessages);
+          setView("compare");
+        } else {
+          const blank = { ...emptyProfile, name: user.displayName };
+          setActiveId(null); setProfile(blank); setDraft(blank); setSaved(false); setSavedAt(""); setMessages(initialMessages); setView("survey");
+        }
+      }
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "금융환경을 삭제하지 못했습니다."); }
+    finally { setWaiting(false); }
+  }
+
   async function saveSurvey(event: FormEvent) {
     event.preventDefault();
     if (waiting || loading || loadFailed) return;
@@ -240,8 +304,10 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
     }
     setWaiting(true); setError("");
     try {
-      const remote = await saveRemoteProfile(draft);
+      const remote = await saveRemoteProfile(activeId, draft);
       const stored = { ...emptyProfile, ...remote.profile };
+      setActiveId(remote.id);
+      setEnvironments(current => [remote, ...current.filter(item => item.id !== remote.id)]);
       setProfile(stored); setDraft(stored); setSaved(true); setSavedAt(remote.savedAt); setView("chat");
       setMessages(current => [...current, {
         id: Date.now(), role: "assistant",
@@ -262,9 +328,9 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
     setWaiting(true);
     let reply = "정확한 답변을 위해 먼저 금융환경 설문을 저장해 주세요. 모르는 항목은 비워두어도 괜찮아요.";
     let advice: Advice[] | undefined;
-    if (saved) {
+    if (saved && activeId) {
       try {
-        const response = await sendChat(question);
+        const response = await sendChat(activeId, question);
         reply = response.answer;
         advice = response.advice;
       } catch (failure) {
@@ -289,20 +355,26 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
           <span><strong>FINDEPENDENCE</strong><small>첫 독립 금융 AI</small></span>
         </button>
 
-        <button className="new-chat" onClick={() => { setMessages(initialMessages); setView("chat"); }}>
+        <button className="new-chat" onClick={startNewEnvironment} disabled={waiting}>
           <Icon>＋</Icon> 새 상담 시작
         </button>
 
         <nav className="nav-list" aria-label="주요 메뉴">
           <button className={view === "chat" ? "active" : ""} onClick={() => setView("chat")}><Icon>⌁</Icon> AI 상담</button>
           <button className={view === "survey" ? "active" : ""} onClick={openSurvey}><Icon>✓</Icon> {saved ? "금융환경 수정" : "금융환경 설문"}</button>
+          <button className={view === "ledger" ? "active" : ""} onClick={() => setView("ledger")}><Icon>▤</Icon> 가계부</button>
+          <button className={view === "compare" ? "active" : ""} onClick={() => setView("compare")}><Icon>▥</Icon> 환경 비교</button>
         </nav>
 
         <div className="sidebar-section">
-          <p>추천 질문</p>
-          <button onClick={() => { setInput("지금 소득으로 독립이 가능할까?"); setView("chat"); }}>독립 가능성 확인</button>
-          <button onClick={() => { setInput("내가 빠뜨린 독립 비용은 뭐야?"); setView("chat"); }}>누락 비용 찾기</button>
-          <button onClick={() => { setInput("비상자금은 얼마나 필요해?"); setView("chat"); }}>비상자금 점검</button>
+          <p>내 금융환경 · {environments.length}/5</p>
+          {environments.map(environment => (
+            <button className={activeId === environment.id ? "environment-active" : ""} key={environment.id}
+              onClick={() => void selectEnvironment(environment)}>
+              <span className="environment-dot" />{environment.profile.title}
+            </button>
+          ))}
+          {!environments.length && <small className="environment-empty">새 상담을 시작해 첫 환경을 저장하세요.</small>}
         </div>
 
         <div className="profile-area" ref={profileMenuRef}>
@@ -328,7 +400,7 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
         <header className="topbar">
           <div>
             <span className="mobile-brand">FINDEPENDENCE</span>
-            <h1>{view === "chat" ? "나의 독립 준비 상담" : saved ? "금융환경 업데이트" : "첫 독립 금융환경 설문"}</h1>
+            <h1>{view === "chat" ? `${profile.title} 상담` : view === "ledger" ? `${profile.title} 가계부` : view === "compare" ? "금융환경 비교" : saved ? "금융환경 업데이트" : "새 독립 금융환경 설문"}</h1>
           </div>
           <div className="account-actions"><div className={`status-pill ${saved ? "ready" : ""}`}><span /> {saved ? "내 정보 연결됨" : "설문 대기 중"}</div></div>
         </header>
@@ -381,7 +453,7 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
 
               <form className="composer" onSubmit={submitMessage}>
                 <div className="suggestions">
-                  {["지금 독립 가능할까?", "빠진 비용이 뭐야?", "주거비를 확인해 줘"].map((text) => <button type="button" key={text} onClick={() => setInput(text)}>{text}</button>)}
+                  {["지금 소득으로 독립 가능할까?", "내가 빠뜨린 독립 비용은 뭐야?", "주거비 부담을 확인해 줘", "비상자금은 얼마나 필요해?"].map((text) => <button type="button" key={text} onClick={() => setInput(text)}>{text}</button>)}
                 </div>
                 <div className="input-wrap">
                   <textarea
@@ -406,7 +478,7 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
 
             <aside className="context-panel">
               <div className="context-heading">
-                <div><span>MY CONTEXT</span><h2>나의 금융환경</h2></div>
+                <div><span>MY CONTEXT</span><h2>{profile.title}</h2></div>
                 <button onClick={openSurvey}>{saved ? "수정" : "입력"}</button>
               </div>
               {saved ? (
@@ -434,6 +506,39 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
               )}
             </aside>
           </div>
+        ) : view === "ledger" ? (
+          <div className="feature-page">
+            <div className="feature-heading"><div><span className="eyebrow">MONTHLY LEDGER</span><h2>{profile.title} 월 가계부</h2><p>설문에 입력한 반복 지출을 한눈에 확인하고 빠진 항목은 금융환경에서 보완하세요.</p></div><button onClick={openSurvey}>금융환경 수정</button></div>
+            {saved ? <>
+              <section className="ledger-summary">
+                <div><span>월 유입</span><strong>{formatWon(summary.income)}</strong></div>
+                <div><span>월 고정지출</span><strong>{formatWon(summary.required)}</strong></div>
+                <div className={summary.balance < 0 ? "negative" : "positive"}><span>월 예상 잔액</span><strong>{formatWon(summary.balance)}</strong></div>
+              </section>
+              <section className="ledger-card">
+                <div className="ledger-head"><strong>월 지출 항목</strong><span>총 {formatWon(summary.required)}</span></div>
+                {ledgerRows.map(([label, amount]) => (
+                  <div className="ledger-row" key={label}><span>{label}</span><div><i style={{ width: `${summary.required ? Math.max(3, amount / summary.required * 100) : 0}%` }} /></div><strong>{amount ? formatWon(amount) : "미입력"}</strong></div>
+                ))}
+              </section>
+              <div className="ledger-tip"><strong>이번 달 확인</strong><p>월세와 관리비뿐 아니라 공과금·보험·대출 상환·미분류 자동이체까지 입력해야 실제 잔액에 가까워져요.</p></div>
+            </> : <div className="feature-empty"><h3>먼저 금융환경을 저장해 주세요.</h3><button onClick={openSurvey}>설문 작성하기</button></div>}
+          </div>
+        ) : view === "compare" ? (
+          <div className="feature-page">
+            <div className="feature-heading"><div><span className="eyebrow">COMPARE UP TO FIVE</span><h2>어떤 독립 환경이 나에게 맞을까요?</h2><p>최대 5개 환경의 월 지출과 예상 잔액을 같은 기준으로 비교할 수 있어요.</p></div><button onClick={startNewEnvironment} disabled={environments.length >= 5}>＋ 환경 추가</button></div>
+            <div className="compare-grid">
+              {environments.map(environment => {
+                const item = getSummary(environment.profile);
+                return <article className={`compare-card ${activeId === environment.id ? "selected" : ""}`} key={environment.id}>
+                  <div className="compare-title"><div><span>{environment.profile.housingType}</span><h3>{environment.profile.title}</h3></div>{activeId === environment.id && <b>상담 중</b>}</div>
+                  <dl><div><dt>월 유입</dt><dd>{formatWon(item.income)}</dd></div><div><dt>월 지출</dt><dd>{formatWon(item.required)}</dd></div><div><dt>예상 잔액</dt><dd className={item.balance < 0 ? "negative" : "positive"}>{formatWon(item.balance)}</dd></div><div><dt>비상자금</dt><dd>{item.emergencyMonths.toFixed(1)}개월</dd></div></dl>
+                  <div className="compare-actions"><button onClick={() => void selectEnvironment(environment)}>이 환경으로 상담</button><button className="danger" onClick={() => void removeEnvironment(environment.id)}>삭제</button></div>
+                </article>;
+              })}
+              {environments.length < 5 && <button className="add-environment-card" onClick={startNewEnvironment}><span>＋</span><strong>새 환경 추가</strong><small>지역·월세·소득 조건을 다르게 저장해 보세요.</small></button>}
+            </div>
+          </div>
         ) : (
           <div className="survey-page">
             <div className="survey-heading">
@@ -445,6 +550,7 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
               <section className="form-section">
                 <div className="section-title"><span>01</span><div><h3>나의 현재 상황</h3><p>독립 시점의 소득과 생활 상태를 확인해요.</p></div></div>
                 <div className="field-grid three">
+                  <label>환경 이름<input maxLength={40} value={draft.title} onChange={(e) => update("title", e.target.value)} placeholder="예: 서울 월세안" required /></label>
                   <label>이름 또는 별명<input maxLength={40} value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="예: 홍길동" /></label>
                   <label>나이 (19~39세)<input type="number" min={19} max={39} step={1} value={draft.age} onChange={(e) => update("age", e.target.value)} placeholder="예: 26" required /></label>
                   <label>취업 상태<select value={draft.employment} onChange={(e) => update("employment", e.target.value)}><option>첫 취업 · 정규직</option><option>계약직</option><option>프리랜서</option><option>구직 중</option><option>대학생 · 대학원생</option></select></label>

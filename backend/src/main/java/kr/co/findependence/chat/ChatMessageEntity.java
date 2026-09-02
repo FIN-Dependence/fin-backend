@@ -10,13 +10,18 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 
 @Entity
-@Table(name = "chat_messages", indexes = @Index(name = "idx_chat_client_created", columnList = "client_id,created_at"))
+@Table(name = "chat_messages", indexes = @Index(
+        name = "idx_chat_client_environment_created",
+        columnList = "client_id,environment_id,created_at"
+))
 public class ChatMessageEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @jakarta.persistence.Column(name = "client_id")
     private String clientId;
+    @jakarta.persistence.Column(name = "environment_id", length = 80)
+    private String environmentId;
     private String role;
     @jakarta.persistence.Column(length = 5000)
     private String content;
@@ -25,14 +30,16 @@ public class ChatMessageEntity {
 
     protected ChatMessageEntity() {}
 
-    public ChatMessageEntity(String clientId, String role, String content) {
+    public ChatMessageEntity(String clientId, String environmentId, String role, String content) {
         this.clientId = clientId;
+        this.environmentId = environmentId;
         this.role = role;
         this.content = content;
         this.createdAt = Instant.now();
     }
 
     public String getRole() { return role; }
+    public String getEnvironmentId() { return environmentId; }
     public String getContent() { return content; }
     public Instant getCreatedAt() { return createdAt; }
 }
