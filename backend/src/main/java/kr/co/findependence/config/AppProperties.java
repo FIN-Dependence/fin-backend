@@ -6,5 +6,5 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AppProperties(Cors cors, Llm llm, Rag rag) {
     public record Cors(String allowedOrigins) {}
     public record Llm(boolean enabled, String baseUrl, String apiKey, String model, double temperature) {}
-    public record Rag(boolean enabled, String dataPath, int maxResults) {}
+    public record Rag(boolean enabled, String searchUrl, int timeoutMs, int officialResults, int dialogueResults) {}
 }
