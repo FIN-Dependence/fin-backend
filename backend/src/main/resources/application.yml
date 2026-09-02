@@ -31,4 +31,8 @@ findependence:
     enabled: ${RAG_ENABLED:false}
     search-url: ${RAG_SEARCH_URL:http://localhost:8000}
     timeout-ms: ${RAG_TIMEOUT_MS:5000}
+    official-results: ${RAG_OFFICIAL_RESULTS:3}
+    dialogue-results: ${RAG_DIALOGUE_RESULTS:2}
+
+  
     
