@@ -29,5 +29,6 @@ findependence:
     temperature: ${LLM_TEMPERATURE:0.2}
   rag:
     enabled: ${RAG_ENABLED:false}
-    data-path: ${RAG_DATA_PATH:../data/processed/housing_rag_final.jsonl}
-    max-results: ${RAG_MAX_RESULTS:4}
+    search-url: ${RAG_SEARCH_URL:http://localhost:8000}
+    timeout-ms: ${RAG_TIMEOUT_MS:5000}
+    
