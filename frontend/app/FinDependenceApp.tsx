@@ -200,7 +200,9 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
     return () => { active = false; };
   }, [user.id, user.displayName, retry]);
 
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
