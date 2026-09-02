@@ -2,69 +2,75 @@ package kr.co.findependence.rag;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.PostConstruct;
 import kr.co.findependence.config.AppProperties;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
-import java.util.Arrays;
+import java.util.Map;
 
 @Service
 public class RagContextService {
-    public record RagHit(String text, String source, int score) {}
+    public record RagHit(String documentId, String category, String text, String source,
+                          String sourceUrl, String page, double distance) {}
 
     private final AppProperties properties;
     private final ObjectMapper objectMapper;
-    private final List<RagHit> documents = new ArrayList<>();
+    private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     public RagContextService(AppProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
     }
 
-    @PostConstruct
-    void load() {
-        if (!properties.rag().enabled() || properties.rag().dataPath() == null) return;
-        Path path = Path.of(properties.rag().dataPath());
-        if (!Files.isRegularFile(path)) return;
-        try (var lines = Files.lines(path)) {
-            lines.filter(line -> !line.isBlank()).forEach(line -> {
-                try {
-                    JsonNode node = objectMapper.readTree(line);
-                    String text = first(node, "evidence_clean", "text", "content", "evidence");
-                    String source = first(node, "source_file", "source", "document");
-                    if (!text.isBlank()) documents.add(new RagHit(text, source, 0));
-                } catch (Exception ignored) {
-                    // 불완전한 한 줄 때문에 전체 RAG 로딩을 중단하지 않는다.
-                }
-            });
-        } catch (IOException ignored) {
-            // RAG 자료가 없어도 규칙 기반 상담은 계속 동작한다.
+    public List<RagHit> search(String query) {
+        if (!properties.rag().enabled()
+                || properties.rag().searchUrl() == null
+                || properties.rag().searchUrl().isBlank()) {
+            return List.of();
+        }
+        try {
+            String body = objectMapper.writeValueAsString(Map.of("question", query));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(stripSlash(properties.rag().searchUrl()) + "/search"))
+                    .timeout(Duration.ofMillis(properties.rag().timeoutMs()))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) return List.of();
+
+            JsonNode root = objectMapper.readTree(response.body());
+            List<RagHit> hits = new ArrayList<>();
+            addHits(hits, root.path("official_evidence"), "official");
+            addHits(hits, root.path("dialogue_examples"), "dialogue");
+            return hits;
+        } catch (Exception ignored) {
+            return List.of();
         }
     }
 
-    public List<RagHit> search(String query) {
-        if (documents.isEmpty()) return List.of();
-        List<String> terms = Arrays.stream(query.toLowerCase(Locale.ROOT).split("\\s+"))
-                .distinct().toList();
-        return documents.stream()
-                .map(doc -> new RagHit(doc.text(), doc.source(), terms.stream()
-                        .mapToInt(term -> term.length() > 1 && doc.text().toLowerCase(Locale.ROOT).contains(term) ? 1 : 0)
-                        .sum()))
-                .filter(hit -> hit.score() > 0)
-                .sorted(Comparator.comparingInt(RagHit::score).reversed())
-                .limit(properties.rag().maxResults())
-                .toList();
+    private void addHits(List<RagHit> hits, JsonNode results, String category) {
+        for (JsonNode node : results) {
+            JsonNode meta = node.path("metadata");
+            hits.add(new RagHit(
+                    node.path("document_id").asText(""),
+                    category,
+                    node.path("content").asText(""),
+                    meta.path("source_file").asText(""),
+                    meta.path("source_url").asText(""),
+                    meta.path("page").asText(""),
+                    node.path("distance").asDouble(0)
+            ));
+        }
     }
 
-    private static String first(JsonNode node, String... keys) {
-        for (String key : keys) if (node.hasNonNull(key)) return node.get(key).asText("");
-        return "";
+    private static String stripSlash(String value) {
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 }
