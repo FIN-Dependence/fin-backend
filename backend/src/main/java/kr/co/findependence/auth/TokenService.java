@@ -59,4 +59,6 @@ public class TokenService {
     }
     @Transactional
     public void revoke(String jti) { sessions.deleteById(jti); }
+    @Transactional
+    public void revokeAll(String userId) { sessions.deleteByUserId(userId); }
 }

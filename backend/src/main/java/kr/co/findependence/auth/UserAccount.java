@@ -27,6 +27,7 @@ public class UserAccount {
     public String getDisplayName() { return displayName; }
     public String getPasswordHash() { return passwordHash; }
     public AccountRole getRole() { return role == null ? AccountRole.USER : role; }
+    void changePassword(String passwordHash) { this.passwordHash = passwordHash; }
     void ensureUserRole() { if (role == null) role = AccountRole.USER; }
     void promoteToAdmin() { role = AccountRole.ADMIN; }
 }

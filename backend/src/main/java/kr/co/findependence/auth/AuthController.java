@@ -26,6 +26,10 @@ public class AuthController {
             @NotBlank @Size(min = 8, max = 17) String confirmPassword) {}
     public record LoginRequest(@NotBlank @Size(max = 254) String email,
                                @NotBlank @Size(max = 64) String password) {}
+    public record PasswordChangeRequest(
+            @NotBlank @Size(max = 64) String currentPassword,
+            @NotBlank @Size(min = 8, max = 17) String newPassword,
+            @NotBlank @Size(min = 8, max = 17) String confirmPassword) {}
     public record UserView(String id, String email, String displayName, AccountRole role) {
         static UserView of(UserAccount user) { return new UserView(user.getId(), user.getEmail(), user.getDisplayName(), user.getRole()); }
     }
@@ -78,6 +82,24 @@ public class AuthController {
     public UserView me(Authentication authentication) {
         return UserView.of(users.findById(authentication.getName()).orElseThrow(() ->
                 new AuthException(HttpStatus.UNAUTHORIZED, "다시 로그인해 주세요.")));
+    }
+    @PutMapping("/password") @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@Valid @RequestBody PasswordChangeRequest body, Authentication authentication,
+                               HttpServletRequest request, HttpServletResponse response) {
+        checkPasswordLength(body.currentPassword());
+        var user = users.findById(authentication.getName()).orElseThrow(() ->
+                new AuthException(HttpStatus.UNAUTHORIZED, "다시 로그인해 주세요."));
+        if (!passwords.matches(body.currentPassword(), user.getPasswordHash()))
+            throw new AuthException(HttpStatus.UNAUTHORIZED, "현재 비밀번호가 일치하지 않습니다.");
+        if (!body.newPassword().equals(body.confirmPassword()))
+            throw new AuthException(HttpStatus.BAD_REQUEST, "새 비밀번호 확인이 일치하지 않습니다.");
+        PasswordPolicy.requireValid(body.newPassword());
+        if (passwords.matches(body.newPassword(), user.getPasswordHash()))
+            throw new AuthException(HttpStatus.BAD_REQUEST, "현재 비밀번호와 다른 새 비밀번호를 입력해 주세요.");
+        user.changePassword(passwords.encode(body.newPassword()));
+        users.saveAndFlush(user);
+        tokens.revokeAll(user.getId());
+        authenticate(user, request, response);
     }
     @PostMapping("/logout") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(Authentication authentication, HttpServletRequest request, HttpServletResponse response) {

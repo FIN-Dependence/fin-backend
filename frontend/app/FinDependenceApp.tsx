@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { AuthUser, deleteRemoteProfile, loadHistory, loadRemoteProfiles, saveRemoteProfile, sendChat, StoredEnvironment } from "./api";
+import { AuthUser, changePassword, deleteRemoteProfile, loadHistory, loadRemoteProfiles, saveRemoteProfile, sendChat, StoredEnvironment } from "./api";
 
 type Profile = {
   title: string;
@@ -175,8 +175,64 @@ function MoneyInput({ label, value, onChange, placeholder, required = false }: {
   </span></label>;
 }
 
+function AccountSettings({ user, onClose }: { user: AuthUser; onClose: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [visible, setVisible] = useState({ current: false, next: false, confirm: false });
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState("");
+  const [success, setSuccess] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setFailure(""); setSuccess("");
+    if (!currentPassword) return setFailure("현재 비밀번호를 입력해 주세요.");
+    if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*_-])[A-Za-z\d!@#$%^&*_-]{8,17}$/.test(newPassword))
+      return setFailure("새 비밀번호는 8~17자이며 대문자·숫자·특수문자(!@#$%^&*_-)를 각각 포함해야 합니다.");
+    if (newPassword !== confirmPassword) return setFailure("새 비밀번호 확인이 일치하지 않습니다.");
+    setBusy(true);
+    try {
+      await changePassword({ currentPassword, newPassword, confirmPassword });
+      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+      setSuccess("비밀번호가 변경되었습니다. 다른 기기의 기존 로그인은 해제됩니다.");
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "비밀번호를 변경하지 못했습니다.");
+    } finally { setBusy(false); }
+  }
+
+  const passwordField = (id: string, label: string, value: string, key: keyof typeof visible,
+    setter: (value: string) => void, autoComplete: string) => <label className="auth-field" htmlFor={id}>{label}
+      <span className="password-field"><input id={id} type={visible[key] ? "text" : "password"} value={value}
+        onChange={event => setter(event.target.value)} maxLength={key === "current" ? 64 : 17}
+        autoComplete={autoComplete} disabled={busy} required />
+        <button type="button" onClick={() => setVisible(state => ({ ...state, [key]: !state[key] }))}
+          aria-label={visible[key] ? `${label} 숨기기` : `${label} 보기`}>{visible[key] ? "숨기기" : "보기"}</button></span>
+    </label>;
+
+  return <div className="survey-page account-settings-page">
+    <div className="survey-heading"><div><span className="eyebrow">ACCOUNT SECURITY</span><h2>회원정보 수정</h2><p>이메일은 계정 식별 정보이므로 변경할 수 없고, 비밀번호만 안전하게 변경할 수 있어요.</p></div></div>
+    <form className="account-settings-form" onSubmit={submit}>
+      <section className="form-section">
+        <div className="section-title"><span>01</span><div><h3>계정 정보</h3><p>가입한 이메일을 확인하고 비밀번호를 변경합니다.</p></div></div>
+        <label className="auth-field" htmlFor="account-email">이메일
+          <input id="account-email" type="email" value={user.email} readOnly disabled aria-readonly="true" />
+        </label>
+        {passwordField("current-password", "현재 비밀번호", currentPassword, "current", setCurrentPassword, "current-password")}
+        {passwordField("new-password", "새 비밀번호", newPassword, "next", setNewPassword, "new-password")}
+        {passwordField("confirm-new-password", "새 비밀번호 확인", confirmPassword, "confirm", setConfirmPassword, "new-password")}
+        <p className="password-rule">8~17자 · 대문자 1개 이상 · 숫자 1개 이상 · 특수문자 !@#$%^&amp;*_- 1개 이상</p>
+        {failure && <p className="auth-error" role="alert">{failure}</p>}
+        {success && <p className="auth-info" role="status">{success}</p>}
+      </section>
+      <div className="form-actions"><button type="button" className="secondary" onClick={onClose}>돌아가기</button><button type="submit" className="primary" disabled={busy}>{busy ? "변경 중…" : "비밀번호 변경"}</button></div>
+    </form>
+  </div>;
+}
+
 export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout: () => Promise<void> }) {
-  const [view, setView] = useState<"chat" | "survey" | "ledger" | "compare">("chat");
+  const [view, setView] = useState<"chat" | "survey" | "ledger" | "compare" | "account">("chat");
   const [environments, setEnvironments] = useState<StoredEnvironment[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
@@ -418,7 +474,7 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
         <div className="profile-area" ref={profileMenuRef}>
         {profileMenuOpen && <div className="profile-menu" role="menu">
           <div><strong>{user.displayName}</strong><small>{user.email}</small></div>
-          <button role="menuitem" onClick={() => { setProfileMenuOpen(false); openSurvey(); }}><span>⚙</span> 금융환경 설정</button>
+          <button role="menuitem" onClick={() => { setProfileMenuOpen(false); setView("account"); }}><span>⚙</span> 회원정보 수정</button>
           <button role="menuitem" className="logout-item" disabled={waiting} onClick={async () => {
             setWaiting(true); setProfileMenuOpen(false);
             try { await onLogout(); } catch (failure) { setError(failure instanceof Error ? failure.message : "로그아웃하지 못했습니다."); }
@@ -438,7 +494,7 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
         <header className="topbar">
           <div>
             <span className="mobile-brand">FINDEPENDENCE</span>
-            <h1>{view === "chat" ? `${profile.title} 상담` : view === "ledger" ? `${profile.title} 가계부` : view === "compare" ? "금융환경 비교" : saved ? "금융환경 업데이트" : "새 독립 금융환경 설문"}</h1>
+            <h1>{view === "chat" ? `${profile.title} 상담` : view === "ledger" ? `${profile.title} 가계부` : view === "compare" ? "금융환경 비교" : view === "account" ? "회원정보 수정" : saved ? "금융환경 업데이트" : "새 독립 금융환경 설문"}</h1>
           </div>
           <div className="account-actions"><div className={`status-pill ${saved ? "ready" : ""}`}><span /> {saved ? "내 정보 연결됨" : "설문 대기 중"}</div></div>
         </header>
@@ -613,6 +669,8 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
               </>}
             </> : <div className="feature-empty"><h3>먼저 금융환경을 저장해 주세요.</h3><button onClick={openSurvey}>설문 작성하기</button></div>}
           </div>
+        ) : view === "account" ? (
+          <AccountSettings user={user} onClose={() => setView("chat")} />
         ) : view === "compare" ? (
           <div className="feature-page">
             <div className="feature-heading"><div><span className="eyebrow">COMPARE UP TO FIVE</span><h2>어떤 독립 환경이 나에게 맞을까요?</h2><p>최대 5개 환경의 월 지출과 예상 잔액을 같은 기준으로 비교할 수 있어요.</p></div><button onClick={startNewEnvironment} disabled={environments.length >= 5}>＋ 환경 추가</button></div>

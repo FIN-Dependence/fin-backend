@@ -165,6 +165,26 @@ class AuthIntegrationTest {
                 .andExpect(status().isNoContent()).andExpect(header().stringValues("Set-Cookie", org.hamcrest.Matchers.hasItem(org.hamcrest.Matchers.containsString("Max-Age=0"))));
         mvc.perform(get("/api/auth/me").cookie(a.cookie())).andExpect(status().isUnauthorized());
     }
+    @Test void passwordChangeRequiresCurrentPasswordAndRotatesSession() throws Exception {
+        var a = account();
+        String changed = "ChangedPass2!";
+        String invalidCurrent = json.writeValueAsString(Map.of(
+                "currentPassword", "WrongPass1!", "newPassword", changed, "confirmPassword", changed));
+        mvc.perform(secured(put("/api/auth/password")).cookie(a.cookie()).contentType(MediaType.APPLICATION_JSON).content(invalidCurrent))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.message").value("현재 비밀번호가 일치하지 않습니다."));
+
+        String valid = json.writeValueAsString(Map.of(
+                "currentPassword", PASSWORD, "newPassword", changed, "confirmPassword", changed));
+        var response = mvc.perform(secured(put("/api/auth/password")).cookie(a.cookie())
+                        .contentType(MediaType.APPLICATION_JSON).content(valid))
+                .andExpect(status().isNoContent()).andReturn().getResponse();
+        var nextCookie = response.getHeaders("Set-Cookie").stream().filter(s -> s.startsWith("FIN_SESSION="))
+                .map(MockCookie::parse).findFirst().orElseThrow();
+
+        assertThat(encoder.matches(changed, users.findById(a.id()).orElseThrow().getPasswordHash())).isTrue();
+        mvc.perform(get("/api/auth/me").cookie(a.cookie())).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/auth/me").cookie(nextCookie)).andExpect(status().isOk());
+    }
     @Test void tamperedAndExpiredSessionRejected() throws Exception {
         var a = account();
         String jwt = a.cookie().getValue();

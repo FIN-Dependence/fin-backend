@@ -20,10 +20,13 @@ test("keeps the Java API integration in the client application", async () => {
   assert.match(app, /sendChat/);
   assert.match(app, /가계부/);
   assert.match(app, /환경 비교/);
+  assert.match(app, /회원정보 수정/);
+  assert.match(app, /현재 비밀번호/);
   assert.match(app, /environments\.length >= 5/);
   assert.match(api, /VITE_API_BASE_URL/);
   assert.match(api, /\/api\/profiles\//);
   assert.match(api, /\/api\/chat/);
+  assert.match(api, /\/api\/auth\/password/);
   assert.match(api, /credentials: "include"/);
   assert.match(api, /response\.status === 403 && requiresCsrf && attempt === 0/);
   assert.doesNotMatch(api, /localStorage\.(getItem|setItem)/);

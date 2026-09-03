@@ -195,6 +195,11 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .survey-heading h2 { margin: 0; font-size: clamp(25px, 3vw, 38px); letter-spacing: -.06em; }.survey-heading p { margin: 10px 0 0; color: #77827e; font-size: 12px; }
 .survey-progress { min-width: 98px; padding: 13px; border: 1px solid #dfe7e3; border-radius: 14px; background: #fff; text-align: center; }.survey-progress strong, .survey-progress span { display: block; }.survey-progress strong { color: #137655; font: 800 19px Manrope, sans-serif; }.survey-progress span { margin-top: 3px; color: #8c9692; font-size: 8px; }
 .survey-page form { max-width: 1000px; margin: 0 auto; }
+.account-settings-page .survey-heading, .account-settings-form { max-width: 620px; }
+.account-settings-form .form-section { padding: 30px; }
+.account-settings-form .auth-field { margin: 20px 0; }
+.account-settings-form .auth-field input:disabled { color: #60717f; background: #eef3f6; opacity: 1; cursor: not-allowed; }
+.password-rule { margin: -4px 0 20px; color: #73838e; font-size: 10px; line-height: 1.6; }
 .form-section { margin-bottom: 13px; padding: 26px 28px 29px; border: 1px solid #e0e6e3; border-radius: 18px; background: #fff; }
 .section-title { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 23px; }.section-title > span { display: grid; place-items: center; width: 31px; height: 31px; flex: 0 0 auto; border-radius: 9px; color: #006fbe; background: #e7f3fb; font: 800 10px Manrope, sans-serif; }.section-title h3 { margin: 0; font-size: 14px; }.section-title p { margin: 4px 0 0; color: #8a9490; font-size: 10px; }
 .field-grid { display: grid; gap: 17px 14px; }.field-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }

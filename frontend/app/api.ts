@@ -136,6 +136,10 @@ export async function logout() {
   catch (error) { if (!(error instanceof ApiError && error.status === 401)) throw error; }
   csrf = null;
 }
+export async function changePassword(body: { currentPassword: string; newPassword: string; confirmPassword: string }) {
+  await apiFetch("/api/auth/password", { method: "PUT", body: JSON.stringify(body) });
+  csrf = null; // The server rotates the login session and CSRF cookie after a password change.
+}
 export type HistoryMessage = { role: "user" | "assistant"; text: string; createdAt: string };
 export type StoredEnvironment = { id: string; profile: FinancialProfile; savedAt: string };
 export async function loadHistory(environmentId: string): Promise<HistoryMessage[]> {
