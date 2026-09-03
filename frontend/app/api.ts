@@ -87,18 +87,32 @@ async function ensureCsrf() {
 }
 
 async function apiFetch(path: string, init: RequestInit = {}, allow404 = false): Promise<Response> {
-  const headers = new Headers(init.headers);
-  if (init.method && !["GET", "HEAD"].includes(init.method)) {
-    await ensureCsrf();
-    headers.set(csrf!.headerName, csrf!.token);
-    headers.set("Content-Type", "application/json");
+  const method = (init.method || "GET").toUpperCase();
+  const requiresCsrf = !["GET", "HEAD", "OPTIONS"].includes(method);
+  let response: Response | null = null;
+
+  // A different tab or an embedded browser may rotate the CSRF cookie while this
+  // page still holds the previous token. Refresh it and retry exactly once.
+  for (let attempt = 0; attempt < (requiresCsrf ? 2 : 1); attempt += 1) {
+    const headers = new Headers(init.headers);
+    if (requiresCsrf) {
+      await ensureCsrf();
+      headers.set(csrf!.headerName, csrf!.token);
+      headers.set("Content-Type", "application/json");
+    }
+    try {
+      response = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "include", cache: "no-store" });
+    } catch {
+      throw new ApiError(0, "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+    }
+    if (response.status === 403 && requiresCsrf && attempt === 0) {
+      csrf = null;
+      continue;
+    }
+    break;
   }
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "include", cache: "no-store" });
-  } catch {
-    throw new ApiError(0, "서버에 연결할 수 없습니다. 백엔드 실행 상태를 확인해 주세요.");
-  }
+
+  if (!response) throw new ApiError(0, "서버 응답을 확인할 수 없습니다.");
   if (response.status === 403) csrf = null;
   if (!response.ok && !(allow404 && response.status === 404)) {
     if (response.status === 401 && !path.startsWith("/api/auth/")) {

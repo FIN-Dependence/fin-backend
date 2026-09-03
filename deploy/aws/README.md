@@ -29,11 +29,19 @@ aws sts get-caller-identity --profile findependence
 저장소 루트에서 실행합니다.
 
 ```powershell
+$EicPrefix = aws ec2 describe-managed-prefix-lists `
+  --profile findependence `
+  --region ap-northeast-2 `
+  --filters Name=prefix-list-name,Values=com.amazonaws.ap-northeast-2.ec2-instance-connect `
+  --query "PrefixLists[0].PrefixListId" `
+  --output text
+
 aws cloudformation deploy `
   --profile findependence `
   --region ap-northeast-2 `
   --stack-name findependence-mvp `
   --template-file deploy/aws/infrastructure.yml `
+  --parameter-overrides Ec2InstanceConnectPrefixListId=$EicPrefix `
   --capabilities CAPABILITY_NAMED_IAM
 
 aws cloudformation describe-stacks `
@@ -44,14 +52,20 @@ aws cloudformation describe-stacks `
   --output table
 ```
 
-출력의 `SuggestedDomain`, `InstanceId`를 기록합니다.
+출력의 `SuggestedDomain`, `InstanceId`를 기록합니다. SSH 22번은 인터넷 전체가 아니라 AWS의 서울 리전 EC2 Instance Connect 서비스에서만 접근할 수 있습니다.
 
 ## 4. 서버에 비밀값 만들고 서비스 시작
 
-AWS 콘솔에서 EC2 → 인스턴스 → `findependence-mvp` → 연결 → Session Manager로 접속합니다. SSH 포트와 키 파일은 필요하지 않습니다.
+AWS 콘솔에서 EC2 → 인스턴스 → `findependence-mvp` 선택 → 연결 → **EC2 Instance Connect** 탭으로 이동합니다. 연결 유형은 `공용 IP 주소를 사용하여 연결`, 사용자 이름은 `ubuntu`를 선택한 뒤 연결합니다. 별도의 개인 SSH 키 파일은 필요하지 않습니다.
+
+기존에 생성한 인스턴스에서 Docker 권한 오류가 발생하면 한 번만 실행한 뒤 터미널을 닫고 EC2 Instance Connect로 다시 접속합니다.
 
 ```bash
-sudo -iu ubuntu
+sudo usermod -aG docker ubuntu
+exit
+```
+
+```bash
 cd /opt/findependence/app
 bash deploy/aws/configure-and-start.sh <SuggestedDomain 값>
 ```
@@ -59,6 +73,8 @@ bash deploy/aws/configure-and-start.sh <SuggestedDomain 값>
 Gemini API 키는 이 과정에서 화면에 표시되지 않게 입력됩니다. MySQL 비밀번호와 JWT 키는 서버에서 무작위 생성되며 `deploy/aws/.env.production`에 권한 `600`으로 저장됩니다. 이 파일은 Git에서 제외됩니다.
 
 RAG 이미지가 모델을 내려받고 빌드하므로 첫 배포는 시간이 걸릴 수 있습니다.
+
+Chroma DB는 `rag/chroma_db`에서 RAG Docker 이미지로 복사됩니다. 별도 공개 포트 없이 Compose 내부의 `rag:8000`에서 실행되고, Spring Boot가 이 주소로 검색을 요청합니다.
 
 ```bash
 docker compose --env-file deploy/aws/.env.production -f deploy/aws/compose.prod.yml ps

@@ -25,6 +25,7 @@ test("keeps the Java API integration in the client application", async () => {
   assert.match(api, /\/api\/profiles\//);
   assert.match(api, /\/api\/chat/);
   assert.match(api, /credentials: "include"/);
+  assert.match(api, /response\.status === 403 && requiresCsrf && attempt === 0/);
   assert.doesNotMatch(api, /localStorage\.(getItem|setItem)/);
   assert.doesNotMatch(app, /localStorage\.(getItem|setItem)/);
   assert.match(api, /environmentId/);

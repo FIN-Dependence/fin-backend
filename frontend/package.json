@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern dist"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern .vinext"
   },
   "dependencies": {
     "react": "19.2.6",

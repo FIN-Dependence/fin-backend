@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: FINDEPENDENCE MVP - single EC2 host with Elastic IP and Session Manager access
+Description: FINDEPENDENCE MVP - single EC2 host with Elastic IP and EC2 Instance Connect access
 
 Parameters:
   InstanceType:
@@ -15,6 +15,9 @@ Parameters:
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+  Ec2InstanceConnectPrefixListId:
+    Type: String
+    Description: AWS-managed prefix list ID for com.amazonaws.ap-northeast-2.ec2-instance-connect
 
 Resources:
   WebSecurityGroup:
@@ -22,6 +25,10 @@ Resources:
     Properties:
       GroupDescription: Public HTTPS access for FINDEPENDENCE
       SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourcePrefixListId: !Ref Ec2InstanceConnectPrefixListId
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
@@ -89,6 +96,7 @@ Resources:
           apt-get update
           apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
           systemctl enable --now docker
+          usermod -aG docker ubuntu
           mkdir -p /opt/findependence
           git clone --branch '${RepositoryBranch}' --depth 1 '${RepositoryUrl}' /opt/findependence/app
           chown -R ubuntu:ubuntu /opt/findependence
