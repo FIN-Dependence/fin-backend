@@ -22,11 +22,18 @@ public class DiagnosisService {
         List<AdviceItem> advice = new ArrayList<>();
 
         if (!"확인 완료".equals(p.getUtilities())) {
-            missing.add("관리비 포함 공과금");
-            questions.add("관리비에 수도·난방이 포함되고 전기·가스·인터넷은 별도인가요?");
-            advice.add(new AdviceItem("확인 필요", "관리비 포함 항목을 확인하세요",
-                    "별도 공과금이 있으면 실제 월 주거비가 현재 계산보다 커질 수 있어요.",
-                    "임대차 조건 또는 관리비 고지서 확인"));
+            missing.add("관리비 포함 범위");
+            questions.add("월 관리비에 수도·난방 등 어떤 항목이 포함되어 있나요?");
+            advice.add(new AdviceItem("확인 필요", "관리비 포함 범위를 확인하세요",
+                    "월 관리비 금액은 입력됐지만 어떤 항목이 포함되는지는 아직 확정되지 않았어요.",
+                    "계약서나 관리비 고지서에서 포함 항목 확인"));
+        }
+        if (p.getMonthlyUtilities() == null) {
+            missing.add("별도 공과금 월 예상액");
+            questions.add("관리비에 포함되지 않는 전기·가스·수도·인터넷 비용은 월 얼마인가요?");
+            advice.add(new AdviceItem("확인 필요", "별도 공과금 예상액을 입력하세요",
+                    "관리비와 별도로 내는 공과금이 비어 있어 실제 월 주거비가 달라질 수 있어요.",
+                    "별도 공과금 월 예상액 입력"));
         }
         if (p.getMonthlyFood() == null || p.getMonthlyTransport() == null || p.getMonthlyCommunication() == null) {
             missing.add("독립 후 기본 생활비");
@@ -47,9 +54,9 @@ public class DiagnosisService {
             questions.add("이미 입력한 비용 외에 카드나 자동이체로 나가는 월 고정비가 있나요?");
         }
         if (p.getEmergencyFund() == null || emergencyMonths < 1) {
-            advice.add(new AdviceItem("주의", "비상자금이 필수지출 1개월분보다 적어요",
-                    "입주 직후 예상하지 못한 지출이 생기면 월 잔액이 부족해질 수 있어요.",
-                    "이사 초기비용과 별도로 비상자금 목표액 설정"));
+            advice.add(new AdviceItem("점검 권장", "예상치 못한 지출에 대비할 여유자금을 점검해 보세요",
+                    "1개월분은 의무 기준이 아닌 참고선이며, 소득 안정성과 입주 초기비용에 따라 필요한 금액은 달라져요.",
+                    "내 상황에 맞는 비상자금 목표액 설정"));
         }
         if (p.isFamilySupportEnds() && value(p.getFamilySupport()) > 0) {
             advice.add(new AdviceItem("주의", "독립과 함께 종료되는 가족 지원이 있어요",
@@ -78,7 +85,8 @@ public class DiagnosisService {
         completed += present(p.getHousingType()) ? 1 : 0;
         completed += p.getMonthlyRent() != null ? 1 : 0;
         completed += p.getMaintenance() != null ? 1 : 0;
-        completed += present(p.getUtilities()) ? 1 : 0;
+        completed += "확인 완료".equals(p.getUtilities()) ? 1 : 0;
+        completed += p.getMonthlyUtilities() != null ? 1 : 0;
         completed += p.getMonthlyFood() != null ? 1 : 0;
         completed += p.getMonthlyTransport() != null ? 1 : 0;
         completed += p.getMonthlyCommunication() != null ? 1 : 0;
@@ -87,7 +95,7 @@ public class DiagnosisService {
         completed += p.getEmergencyFund() != null ? 1 : 0;
 
         return new DiagnosisResponse(inflow, required, balance,
-                Math.round(emergencyMonths * 10.0) / 10.0, Math.min(100, Math.round(completed / 13f * 100)),
+                Math.round(emergencyMonths * 10.0) / 10.0, Math.min(100, Math.round(completed / 14f * 100)),
                 missing, questions, advice.stream().limit(3).toList());
     }
 

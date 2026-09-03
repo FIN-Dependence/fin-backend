@@ -31,7 +31,7 @@ type Profile = {
 };
 
 type Advice = {
-  status: "확인 필요" | "주의" | "양호";
+  status: "확인 필요" | "점검 권장" | "주의" | "양호";
   title: string;
   description: string;
   action: string;
@@ -100,9 +100,17 @@ function buildAdvice(profile: Profile): Advice[] {
   if (profile.utilities !== "확인 완료") {
     result.push({
       status: "확인 필요",
-      title: "관리비에 포함된 공과금을 확인하세요",
-      description: "수도·난방·전기·가스가 별도라면 실제 주거비가 지금 계산보다 커질 수 있어요.",
-      action: "임대차 조건 또는 관리비 고지서에서 포함 항목 확인",
+      title: "관리비 포함 범위를 확인하세요",
+      description: "월 관리비 금액은 입력됐지만 수도·난방 등 어떤 항목이 포함되는지는 아직 확정되지 않았어요.",
+      action: "계약서나 관리비 고지서에서 포함 항목 확인",
+    });
+  }
+  if (!profile.monthlyUtilities) {
+    result.push({
+      status: "확인 필요",
+      title: "별도 공과금 예상액을 입력하세요",
+      description: "관리비에 포함되지 않는 전기·가스·수도·인터넷 비용을 별도 합계로 입력해야 실제 주거비를 계산할 수 있어요.",
+      action: "별도 공과금 월 예상액 입력",
     });
   }
   if (!profile.monthlyFood || !profile.monthlyTransport || !profile.monthlyCommunication) {
@@ -123,10 +131,10 @@ function buildAdvice(profile: Profile): Advice[] {
   }
   if (required > 0 && emergencyMonths < 1) {
     result.push({
-      status: "주의",
-      title: "비상자금이 필수지출 1개월분보다 적어요",
-      description: `현재 입력 기준 비상자금은 약 ${emergencyMonths.toFixed(1)}개월분이에요. 입주 직후 예상 밖 지출에 취약할 수 있어요.`,
-      action: "이사 초기비용과 별도로 비상자금 목표액 설정",
+      status: "점검 권장",
+      title: "예상치 못한 지출에 대비할 여유자금을 점검해 보세요",
+      description: `현재 입력 기준 약 ${emergencyMonths.toFixed(1)}개월분이에요. 1개월분은 의무 기준이 아닌 참고선이며, 소득 안정성과 입주 초기비용에 따라 필요한 금액은 달라져요.`,
+      action: "내 상황에 맞는 비상자금 목표액 설정",
     });
   }
   if (profile.familySupportEnds && money(profile.familySupport) > 0) {
@@ -183,6 +191,7 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [ledgerScope, setLedgerScope] = useState<"month" | "year">("month");
   const endRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -223,12 +232,37 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
 
   const summary = useMemo(() => getSummary(profile), [profile]);
   const ledgerRows = useMemo(() => [
-    ["주거비", money(profile.monthlyRent) + money(profile.maintenance) + money(profile.monthlyUtilities)],
-    ["식비", money(profile.monthlyFood)], ["교통비", money(profile.monthlyTransport)],
-    ["통신비", money(profile.monthlyCommunication)], ["보험료", money(profile.insurance)],
-    ["대출 상환", money(profile.debtPayment)], ["카드·자동이체", money(profile.cardPayment)],
-    ["기타 고정비", money(profile.otherFixedCost)],
-  ] as [string, number][], [profile]);
+    { label: "주거", amount: money(profile.monthlyRent) + money(profile.maintenance) + money(profile.monthlyUtilities), color: "#0878c9", type: "고정" },
+    { label: "식비", amount: money(profile.monthlyFood), color: "#20a37a", type: "변동" },
+    { label: "교통", amount: money(profile.monthlyTransport), color: "#f0a43b", type: "변동" },
+    { label: "통신", amount: money(profile.monthlyCommunication), color: "#7858c9", type: "고정" },
+    { label: "보험", amount: money(profile.insurance), color: "#e36f71", type: "고정" },
+    { label: "대출 상환", amount: money(profile.debtPayment), color: "#445b73", type: "고정" },
+    { label: "카드·자동이체", amount: money(profile.cardPayment), color: "#46a5af", type: "고정" },
+    { label: "기타", amount: money(profile.otherFixedCost), color: "#9aa8b4", type: "고정" },
+  ], [profile]);
+  const ledgerPlan = useMemo(() => {
+    const now = new Date();
+    const month = now.getMonth();
+    const oneTime = money(profile.movingCost) + money(profile.furnishingCost);
+    const plannedSpend = summary.required + oneTime;
+    const budgetRate = summary.income > 0 ? Math.min(100, Math.round((plannedSpend / summary.income) * 100)) : 0;
+    const fixed = ledgerRows.filter(row => row.type === "고정").reduce((total, row) => total + row.amount, 0);
+    const variable = ledgerRows.filter(row => row.type === "변동").reduce((total, row) => total + row.amount, 0);
+    const annual = Array.from({ length: 12 }, (_, index) => ({
+      label: `${index + 1}월`, amount: summary.required + (index === month ? oneTime : 0), active: index === month,
+    }));
+    const maxAnnual = Math.max(...annual.map(item => item.amount), 1);
+    const transactions = [
+      { day: "01", title: "월 소득", category: "수입", amount: summary.income, income: true },
+      { day: "05", title: `${profile.housingType} 주거비`, category: "주거", amount: money(profile.monthlyRent), income: false },
+      { day: "08", title: "관리비·별도 공과금", category: "주거", amount: money(profile.maintenance) + money(profile.monthlyUtilities), income: false },
+      { day: "12", title: "통신비·보험료", category: "고정비", amount: money(profile.monthlyCommunication) + money(profile.insurance), income: false },
+      { day: "15", title: "식비·교통비 예산", category: "생활비", amount: money(profile.monthlyFood) + money(profile.monthlyTransport), income: false },
+      { day: "25", title: "대출·카드·기타 납부", category: "금융", amount: money(profile.debtPayment) + money(profile.cardPayment) + money(profile.otherFixedCost), income: false },
+    ].filter(item => item.amount > 0);
+    return { month, oneTime, plannedSpend, budgetRate, fixed, variable, annual, maxAnnual, transactions };
+  }, [ledgerRows, profile, summary]);
   const completion = useMemo(() => {
     const keys: (keyof Profile)[] = ["age", "employment", "monthlyIncome", "housingType", "monthlyRent", "maintenance", "utilities",
       "monthlyUtilities", "monthlyFood", "monthlyTransport", "monthlyCommunication", "insurance", "debtPayment", "emergencyFund"];
@@ -318,9 +352,8 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
     finally { setWaiting(false); }
   }
 
-  async function submitMessage(event: FormEvent) {
-    event.preventDefault();
-    const question = input.trim();
+  async function sendQuestion(questionText: string) {
+    const question = questionText.trim();
     if (!question || waiting || loading || loadFailed) return;
     setError("");
     setMessages((current) => [...current, { id: Date.now(), role: "user", text: question }]);
@@ -345,6 +378,11 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
       advice,
     }]);
     setWaiting(false);
+  }
+
+  function submitMessage(event: FormEvent) {
+    event.preventDefault();
+    void sendQuestion(input);
   }
 
   return (
@@ -437,7 +475,14 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
                         <div className="advice-list">
                           {message.advice.map((item) => (
                             <div className="advice-card" key={item.title}>
-                              <div className="advice-top"><span className="advice-status" data-status={item.status}>{item.status}</span><span>→</span></div>
+                              <div className="advice-top">
+                                <span className="advice-status" data-status={item.status}
+                                  title={item.status === "확인 필요" ? "입력하지 않았거나 포함 범위를 확인해야 하는 항목이에요." : item.status === "점검 권장" ? "의무 기준은 아니지만 내 상황에 맞게 점검해 볼 항목이에요." : item.status === "주의" ? "현재 조건을 그대로 두면 잔액 부족 등 문제가 생길 수 있어요." : "현재 입력 기준으로 확인된 항목이에요."}>
+                                  {item.status === "확인 필요" ? "정보 확인 필요" : item.status}
+                                </span>
+                                <button type="button" className="advice-arrow" onClick={openSurvey}
+                                  aria-label={`${item.title} 수정 화면으로 이동`}>→</button>
+                              </div>
                               <strong>{item.title}</strong>
                               <p>{item.description}</p>
                               <button onClick={openSurvey}>{item.action}</button>
@@ -453,7 +498,7 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
 
               <form className="composer" onSubmit={submitMessage}>
                 <div className="suggestions">
-                  {["지금 소득으로 독립 가능할까?", "내가 빠뜨린 독립 비용은 뭐야?", "주거비 부담을 확인해 줘", "비상자금은 얼마나 필요해?"].map((text) => <button type="button" key={text} onClick={() => setInput(text)}>{text}</button>)}
+                  {["지금 소득으로 독립 가능할까?", "내가 빠뜨린 독립 비용은 뭐야?", "주거비 부담을 확인해 줘", "비상자금은 얼마나 필요해?"].map((text) => <button type="button" key={text} disabled={waiting} onClick={() => void sendQuestion(text)}>{text}</button>)}
                 </div>
                 <div className="input-wrap">
                   <textarea
@@ -495,7 +540,8 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
                   </div>
                   <div className="context-list">
                     <div><span className="dot good" />소득<strong>확인</strong></div>
-                    <div><span className={`dot ${profile.utilities === "확인 완료" ? "good" : "warn"}`} />주거비<strong>{profile.utilities === "확인 완료" ? "확인" : "일부 누락"}</strong></div>
+                    <div><span className={`dot ${profile.utilities === "확인 완료" ? "good" : "warn"}`} />관리비 범위<strong>{profile.utilities === "확인 완료" ? "확인" : "확인 필요"}</strong></div>
+                    <div><span className={`dot ${profile.monthlyUtilities ? "good" : "warn"}`} />별도 공과금<strong>{profile.monthlyUtilities ? "입력됨" : "미입력"}</strong></div>
                     <div><span className={`dot ${profile.insurance ? "good" : "warn"}`} />보험<strong>{profile.insurance ? "확인" : "확인 필요"}</strong></div>
                     <div><span className={`dot ${profile.emergencyFund ? "good" : "warn"}`} />비상자금<strong>{profile.emergencyFund ? "입력됨" : "미입력"}</strong></div>
                   </div>
@@ -508,20 +554,63 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
           </div>
         ) : view === "ledger" ? (
           <div className="feature-page">
-            <div className="feature-heading"><div><span className="eyebrow">MONTHLY LEDGER</span><h2>{profile.title} 월 가계부</h2><p>설문에 입력한 반복 지출을 한눈에 확인하고 빠진 항목은 금융환경에서 보완하세요.</p></div><button onClick={openSurvey}>금융환경 수정</button></div>
+            <div className="feature-heading ledger-title"><div><span className="eyebrow">MONEY DIARY</span><h2>{profile.title} 가계부</h2><p>독립 후 들어오고 나갈 돈을 월간 계획과 연간 흐름으로 살펴보세요.</p></div><button onClick={openSurvey}>금융환경 수정</button></div>
             {saved ? <>
-              <section className="ledger-summary">
-                <div><span>월 유입</span><strong>{formatWon(summary.income)}</strong></div>
-                <div><span>월 고정지출</span><strong>{formatWon(summary.required)}</strong></div>
-                <div className={summary.balance < 0 ? "negative" : "positive"}><span>월 예상 잔액</span><strong>{formatWon(summary.balance)}</strong></div>
-              </section>
-              <section className="ledger-card">
-                <div className="ledger-head"><strong>월 지출 항목</strong><span>총 {formatWon(summary.required)}</span></div>
-                {ledgerRows.map(([label, amount]) => (
-                  <div className="ledger-row" key={label}><span>{label}</span><div><i style={{ width: `${summary.required ? Math.max(3, amount / summary.required * 100) : 0}%` }} /></div><strong>{amount ? formatWon(amount) : "미입력"}</strong></div>
-                ))}
-              </section>
-              <div className="ledger-tip"><strong>이번 달 확인</strong><p>월세와 관리비뿐 아니라 공과금·보험·대출 상환·미분류 자동이체까지 입력해야 실제 잔액에 가까워져요.</p></div>
+              <div className="ledger-toolbar">
+                <div><button aria-label="이전 달">‹</button><strong>{new Date().getFullYear()}년 {ledgerPlan.month + 1}월</strong><button aria-label="다음 달">›</button></div>
+                <nav aria-label="가계부 보기"><button className={ledgerScope === "month" ? "active" : ""} onClick={() => setLedgerScope("month")}>이번 달</button><button className={ledgerScope === "year" ? "active" : ""} onClick={() => setLedgerScope("year")}>1년 돌아보기</button></nav>
+              </div>
+              {ledgerScope === "month" ? <>
+                <section className="ledger-summary rich">
+                  <div><span>이번 달 수입</span><strong>{formatWon(summary.income)}</strong><small>가족 지원 지속 여부 반영</small></div>
+                  <div><span>이번 달 지출 계획</span><strong>{formatWon(ledgerPlan.plannedSpend)}</strong><small>정기 {formatWon(summary.required)}{ledgerPlan.oneTime > 0 ? ` + 초기비용 ${formatWon(ledgerPlan.oneTime)}` : ""}</small></div>
+                  <div className={summary.income - ledgerPlan.plannedSpend < 0 ? "negative" : "positive"}><span>남길 수 있는 돈</span><strong>{formatWon(summary.income - ledgerPlan.plannedSpend)}</strong><small>{summary.income > 0 ? `수입의 ${Math.max(0, 100 - ledgerPlan.budgetRate)}%` : "소득 입력 필요"}</small></div>
+                  <div><span>비상자금 버팀 기간</span><strong>{summary.emergencyMonths.toFixed(1)}개월</strong><small>현재 필수지출 기준</small></div>
+                </section>
+
+                <section className="ledger-dashboard">
+                  <article className="ledger-card budget-card">
+                    <div className="ledger-head"><div><strong>예산 사용 계획</strong><small>소득 대비 예정 지출</small></div><b>{ledgerPlan.budgetRate}%</b></div>
+                    <div className="budget-progress"><i style={{ width: `${ledgerPlan.budgetRate}%` }} /></div>
+                    <div className="budget-breakdown"><div><span>고정비</span><strong>{formatWon(ledgerPlan.fixed)}</strong></div><div><span>변동비</span><strong>{formatWon(ledgerPlan.variable)}</strong></div><div><span>일회성</span><strong>{formatWon(ledgerPlan.oneTime)}</strong></div></div>
+                    <p className="comparison-empty"><b>직전달 비교</b> 첫 기록이라 아직 비교할 내역이 없어요. 다음 달부터 증감액과 소비 변화를 보여드릴게요.</p>
+                  </article>
+
+                  <article className="ledger-card category-card">
+                    <div className="ledger-head"><div><strong>카테고리별 지출</strong><small>월 정기지출 구성</small></div><span>총 {formatWon(summary.required)}</span></div>
+                    <div className="category-visual">
+                      <div className="expense-donut"><span><b>{formatWon(summary.required)}</b><small>월 지출</small></span></div>
+                      <div className="category-legend">{ledgerRows.filter(row => row.amount > 0).slice(0, 6).map(row => <div key={row.label}><i style={{ background: row.color }} /><span>{row.label}</span><strong>{Math.round(row.amount / Math.max(summary.required, 1) * 100)}%</strong></div>)}</div>
+                    </div>
+                  </article>
+                </section>
+
+                <section className="ledger-card ledger-detail">
+                  <div className="ledger-head"><div><strong>지출 계획 상세</strong><small>설문에 저장된 월 예상 금액</small></div><span>{ledgerRows.filter(row => row.amount > 0).length}개 항목</span></div>
+                  {ledgerRows.map(row => (
+                    <div className="ledger-row" key={row.label}><span><i style={{ background: row.color }} />{row.label}<small>{row.type}</small></span><div><i style={{ width: `${summary.required ? Math.max(3, row.amount / summary.required * 100) : 0}%`, background: row.color }} /></div><strong>{row.amount ? formatWon(row.amount) : "미입력"}</strong></div>
+                  ))}
+                </section>
+
+                <section className="ledger-card transaction-card">
+                  <div className="ledger-head"><div><strong>이번 달 돈의 일정</strong><small>납부일을 입력하기 전의 기본 예정표</small></div><button onClick={openSurvey}>금액 수정</button></div>
+                  <div className="transaction-list">{ledgerPlan.transactions.map(item => <div key={`${item.day}-${item.title}`}><time>{item.day}<small>일</small></time><span><b>{item.title}</b><small>{item.category} · 예정</small></span><strong className={item.income ? "income" : "expense"}>{item.income ? "+" : "−"}{formatWon(item.amount)}</strong></div>)}</div>
+                </section>
+                <div className="ledger-tip"><strong>이번 달 체크 포인트</strong><p>납부일은 아직 입력받지 않아 예시 날짜로 표시했어요. 실제 날짜와 사용 내역 저장은 다음 개발 단계에서 계정별로 연결할 수 있습니다.</p></div>
+              </> : <>
+                <section className="annual-summary">
+                  <div><span>연간 예상 수입</span><strong>{formatWon(summary.income * 12)}</strong></div><div><span>연간 예상 지출</span><strong>{formatWon(summary.required * 12 + ledgerPlan.oneTime)}</strong></div><div className={summary.balance < 0 ? "negative" : "positive"}><span>연간 예상 잔액</span><strong>{formatWon(summary.balance * 12 - ledgerPlan.oneTime)}</strong></div>
+                </section>
+                <section className="ledger-card annual-card">
+                  <div className="ledger-head"><div><strong>{new Date().getFullYear()}년 지출 흐름</strong><small>현재 금융환경을 12개월에 적용한 예상치</small></div><span>단위: 만원</span></div>
+                  <div className="annual-chart">{ledgerPlan.annual.map(item => <div key={item.label} className={item.active ? "active" : ""}><span><i style={{ height: `${Math.max(8, item.amount / ledgerPlan.maxAnnual * 100)}%` }} /></span><small>{item.label}</small></div>)}</div>
+                  <p>이번 달 막대에는 입력한 이사비·가구비가 포함됩니다. 실제 내역이 쌓이면 월별 확정 지출로 교체됩니다.</p>
+                </section>
+                <section className="ledger-dashboard annual-insights">
+                  <article className="ledger-card"><div className="ledger-head"><strong>1년 예산 구성</strong></div><dl><div><dt>주거비</dt><dd>{formatWon(ledgerRows[0].amount * 12)}</dd></div><div><dt>생활비</dt><dd>{formatWon((money(profile.monthlyFood) + money(profile.monthlyTransport)) * 12)}</dd></div><div><dt>금융 고정비</dt><dd>{formatWon((money(profile.insurance) + money(profile.debtPayment) + money(profile.cardPayment)) * 12)}</dd></div><div><dt>이사 초기비용</dt><dd>{formatWon(ledgerPlan.oneTime)}</dd></div></dl></article>
+                  <article className="ledger-card year-note"><span>YEAR REVIEW</span><h3>{summary.balance >= 0 ? "현재 계획대로라면 1년 동안 잔액을 남길 수 있어요." : "현재 계획은 매달 지출이 수입을 넘어설 가능성이 있어요."}</h3><p>{summary.balance >= 0 ? `월 예상 잔액 ${formatWon(summary.balance)}을 유지하면 1년 기준 ${formatWon(summary.balance * 12)}을 남길 수 있습니다.` : `월 ${formatWon(Math.abs(summary.balance))}의 부족분을 줄일 항목을 금융환경에서 다시 살펴보세요.`}</p><button onClick={() => setView("chat")}>AI에게 절약 방법 묻기 →</button></article>
+                </section>
+              </>}
             </> : <div className="feature-empty"><h3>먼저 금융환경을 저장해 주세요.</h3><button onClick={openSurvey}>설문 작성하기</button></div>}
           </div>
         ) : view === "compare" ? (
@@ -568,8 +657,8 @@ export function FinDependenceApp({ user, onLogout }: { user: AuthUser; onLogout:
                   <MoneyInput label="보증금" value={draft.deposit} onChange={(value) => update("deposit", value)} placeholder="예: 1,000" />
                   <MoneyInput label="월세" value={draft.monthlyRent} onChange={(value) => update("monthlyRent", value)} placeholder="예: 65" />
                   <MoneyInput label="월 관리비" value={draft.maintenance} onChange={(value) => update("maintenance", value)} placeholder="예: 8" />
-                  <label>관리비 포함 항목<select value={draft.utilities} onChange={(e) => update("utilities", e.target.value)}><option>확인하지 못함</option><option>일부만 확인</option><option>확인 완료</option></select></label>
-                  <MoneyInput label="관리비 외 월 공과금" value={draft.monthlyUtilities} onChange={(value) => update("monthlyUtilities", value)} placeholder="전기·가스·수도" />
+                  <label>관리비 포함 범위 확인<select value={draft.utilities} onChange={(e) => update("utilities", e.target.value)}><option>확인하지 못함</option><option>일부만 확인</option><option>확인 완료</option></select></label>
+                  <MoneyInput label="별도 공과금 월 합계" value={draft.monthlyUtilities} onChange={(value) => update("monthlyUtilities", value)} placeholder="전기·가스·수도·인터넷" />
                 </div>
               </section>
 

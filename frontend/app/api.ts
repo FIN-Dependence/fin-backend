@@ -26,7 +26,7 @@ export type FinancialProfile = {
 };
 
 export type ApiAdvice = {
-  status: "확인 필요" | "주의" | "양호";
+  status: "확인 필요" | "점검 권장" | "주의" | "양호";
   title: string;
   description: string;
   action: string;
