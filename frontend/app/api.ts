@@ -67,7 +67,7 @@ type ChatResponse = {
   createdAt: string;
 };
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 export type AuthUser = { id: string; email: string; displayName: string; role: "USER" | "ADMIN" };
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }

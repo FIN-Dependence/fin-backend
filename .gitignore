@@ -25,3 +25,9 @@ backend/.runtime-tmp/
 backend/data/
 rag/chroma_db/
 rag/dist/
+
+# AWS production secrets and infrastructure-local state
+deploy/aws/.env.production
+deploy/aws/*.pem
+deploy/aws/*.key
+deploy/aws/terraform.tfstate*

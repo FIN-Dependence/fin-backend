@@ -31,7 +31,7 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-기본 주소는 `http://localhost:3000`입니다. Node.js 22.13 이상이 필요합니다.
+기본 주소는 `http://localhost:3000`입니다. Node.js 20.19 이상이 필요합니다.
 
 ### 백엔드
 
@@ -42,7 +42,7 @@ cd backend
 
 기본 주소는 `http://localhost:8080`입니다.
 
-먼저 웹에서 회원가입하면 설문 화면으로 들어갑니다. 저장한 설문과 최근 상담은 같은 계정으로 다시 로그인해 불러올 수 있습니다. 기존 `preview.html`은 로그인 이전의 정적 시안이고 실제 서비스는 개발 서버의 `/` 주소입니다.
+먼저 웹에서 회원가입하면 설문 화면으로 들어갑니다. 저장한 설문과 최근 상담은 같은 계정으로 다시 로그인해 불러올 수 있습니다.
 
 인증 구조·실행·배포 전 체크리스트는 [AUTH_SETUP.md](AUTH_SETUP.md)를 확인하세요.
 
@@ -55,3 +55,7 @@ cd backend
 Chroma DB 생성 및 Colab 실행 방법은 `rag/README.md`와 `rag/COLAB_실행순서.md`에 정리되어 있습니다. 현재 5,390건 스냅샷은 `rag/chroma_db`에 포함되어 clone 직후 사용할 수 있습니다. 이후 DB 갱신본은 저장소가 불필요하게 커지는 것을 막기 위해 `package_chroma.py`로 ZIP을 만들고 GitHub Release로 배포하는 방식을 권장합니다.
 
 Qwen3-Embedding-0.6B는 JSONL 근거를 벡터로 만드는 임베딩 모델이고 Chroma는 그 벡터를 저장·검색하는 DB입니다. 질문이 들어오면 FastAPI가 Chroma에서 관련 근거를 찾고, Java 백엔드가 로그인 사용자의 설문·계산 결과·근거를 합쳐 Gemini에 전달합니다.
+
+## AWS 배포
+
+AWS 배포 파일은 `deploy/aws`에 있습니다. EC2 한 대에서 HTTPS 프록시, React 웹, Spring Boot API, RAG, MySQL을 Docker Compose로 실행하며 비밀값은 Git에 포함하지 않습니다. 계정 준비와 배포 순서는 `deploy/aws/README.md`를 따릅니다.
